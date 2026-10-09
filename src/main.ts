@@ -1,3 +1,11 @@
+import '@fontsource/libre-caslon-display/400.css';
+import '@fontsource/libre-caslon-text/400.css';
+import '@fontsource/libre-caslon-text/400-italic.css';
+import '@fontsource/libre-caslon-text/700.css';
+import '@fontsource/courier-prime/400.css';
+import '@fontsource/courier-prime/700.css';
+import '@fontsource/kalam/400.css';
+import '@fontsource/kalam/700.css';
 import { analyzeFace, loadLandmarker, MAX_YAW, type FaceAnalysis } from './face.ts';
 import { TRAITS, faceTraits, type TraitVector } from './traits.ts';
 import { POKEDEX, rankAll, explainMatch, artworkUrl, type Match } from './pokemon.ts';

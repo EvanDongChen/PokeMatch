@@ -1,13 +1,16 @@
 import {
   FaceLandmarker,
-  FilesetResolver,
   type FaceLandmarkerResult,
   type NormalizedLandmark,
 } from '@mediapipe/tasks-vision';
 
-const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/wasm';
-const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+// Everything the face model needs is served with the site, so it works on
+// flaky networks. The SIMD build covers every current browser.
+import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url';
+import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url';
+
+const WASM: Parameters<typeof FaceLandmarker.createFromOptions>[0] = { wasmLoaderPath, wasmBinaryPath };
+const MODEL_URL = `${import.meta.env.BASE_URL}models/face_landmarker.task`;
 
 /** MediaPipe face-mesh landmark indices used for measurement. */
 const L = {
@@ -81,15 +84,12 @@ export const MAX_YAW = 0.35;
 let landmarkerPromise: Promise<FaceLandmarker> | null = null;
 
 export function loadLandmarker(): Promise<FaceLandmarker> {
-  landmarkerPromise ??= (async () => {
-    const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-    return FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL_URL },
-      runningMode: 'IMAGE',
-      numFaces: 4,
-      outputFaceBlendshapes: true,
-    });
-  })();
+  landmarkerPromise ??= FaceLandmarker.createFromOptions(WASM, {
+    baseOptions: { modelAssetPath: MODEL_URL },
+    runningMode: 'IMAGE',
+    numFaces: 4,
+    outputFaceBlendshapes: true,
+  });
   landmarkerPromise.catch(() => (landmarkerPromise = null));
   return landmarkerPromise;
 }
@@ -120,15 +120,12 @@ let videoLandmarkerPromise: Promise<FaceLandmarker> | null = null;
 
 /** A second landmarker in VIDEO mode, which tracks between frames for live use. */
 export function loadVideoLandmarker(): Promise<FaceLandmarker> {
-  videoLandmarkerPromise ??= (async () => {
-    const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-    return FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL_URL },
-      runningMode: 'VIDEO',
-      numFaces: 1,
-      outputFaceBlendshapes: true,
-    });
-  })();
+  videoLandmarkerPromise ??= FaceLandmarker.createFromOptions(WASM, {
+    baseOptions: { modelAssetPath: MODEL_URL },
+    runningMode: 'VIDEO',
+    numFaces: 1,
+    outputFaceBlendshapes: true,
+  });
   videoLandmarkerPromise.catch(() => (videoLandmarkerPromise = null));
   return videoLandmarkerPromise;
 }
