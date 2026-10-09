@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Upload or snap a photo and find the Pokémon that matches your facial structure." />
+    <title>PokéMatch</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23fff' stroke='%23222' stroke-width='8'/%3E%3Cpath d='M4 50a46 46 0 0 1 92 0z' fill='%23e3350d' stroke='%23222' stroke-width='8'/%3E%3Ccircle cx='50' cy='50' r='13' fill='%23fff' stroke='%23222' stroke-width='8'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="logo" aria-hidden="true"></div>
+      <div>
+        <h1>PokéMatch</h1>
+        <p class="tagline">Which Pokémon shares your face?</p>
+      </div>
+    </header>
+
+    <main>
+      <!-- 1. Pick a photo -->
+      <section id="screen-pick" class="screen card">
+        <div id="dropzone" class="dropzone">
+          <div class="drop-icon" aria-hidden="true">📸</div>
+          <p class="drop-title">Drop a photo here</p>
+          <p class="muted">A clear, front-facing photo works best</p>
+          <div class="actions">
+            <label class="btn primary">
+              Upload photo
+              <input id="file-input" type="file" accept="image/*" hidden />
+            </label>
+            <button id="camera-btn" class="btn">Use camera</button>
+          </div>
+        </div>
+        <p class="privacy">🔒 Your photo is analysed on this device. It is never uploaded.</p>
+      </section>
+
+      <!-- 2. Camera -->
+      <section id="screen-camera" class="screen card" hidden>
+        <div class="camera-frame">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <div class="face-guide" aria-hidden="true"></div>
+        </div>
+        <div class="actions">
+          <button id="capture-btn" class="btn primary">Snap photo</button>
+          <button id="camera-cancel" class="btn">Cancel</button>
+        </div>
+      </section>
+
+      <!-- 3. Analysing -->
+      <section id="screen-analyse" class="screen card" hidden>
+        <div class="photo-frame scanning">
+          <canvas id="analyse-canvas"></canvas>
+        </div>
+        <p id="analyse-status" class="status">Loading face model…</p>
+      </section>
+
+      <!-- 4. Results -->
+      <section id="screen-result" class="screen" hidden>
+        <div id="notice" class="notice" hidden></div>
+
+        <div class="card result-hero">
+          <div class="pair">
+            <figure class="you">
+              <canvas id="result-canvas"></canvas>
+              <figcaption>You</figcaption>
+            </figure>
+            <div class="vs" aria-hidden="true">≈</div>
+            <figure class="mon" id="mon-figure">
+              <img id="mon-art" alt="" />
+              <figcaption id="mon-caption"></figcaption>
+            </figure>
+          </div>
+
+          <div class="match-headline">
+            <p class="eyebrow" id="match-eyebrow">Your Pokémon match</p>
+            <h2 id="mon-name"></h2>
+            <div id="mon-types" class="types"></div>
+            <div class="score"><span id="mon-score"></span> match</div>
+          </div>
+
+          <ul id="reasons" class="reasons"></ul>
+        </div>
+
+        <div class="card">
+          <h3>Trait breakdown</h3>
+          <div class="legend">
+            <span><i class="dot you"></i>You</span>
+            <span><i class="dot mon"></i><span id="legend-mon"></span></span>
+          </div>
+          <div id="traits" class="traits"></div>
+        </div>
+
+        <div class="card">
+          <h3>Your top 6 matches</h3>
+          <div id="runners" class="runners"></div>
+        </div>
+
+        <div class="actions center">
+          <button id="again-btn" class="btn primary">Try another photo</button>
+        </div>
+      </section>
+
+      <p id="error" class="error" role="alert" hidden></p>
+    </main>
+
+    <footer class="site-footer">
+      Just for fun. Pokémon data from <a href="https://pokeapi.co" target="_blank" rel="noopener">PokéAPI</a>.
+      Pokémon © Nintendo / Game Freak / The Pokémon Company.
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
