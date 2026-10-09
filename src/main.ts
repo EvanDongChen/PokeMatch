@@ -5,6 +5,7 @@ import { loadSilhouette } from './silhouette.ts';
 import { Stage, type Phase } from './stage.ts';
 import { renderRadar } from './radar.ts';
 import { renderShareCard } from './share.ts';
+import { LiveMirror } from './live.ts';
 
 const MAX_SIDE = 1024;
 
@@ -108,7 +109,39 @@ window.addEventListener('paste', (e) => {
 const video = $<HTMLVideoElement>('camera-video');
 let stream: MediaStream | null = null;
 
+// Live reading beside the camera: updates as the subject pulls faces.
+let liveId = 0;
+const live = new LiveMirror(video, $<HTMLCanvasElement>('live-overlay'), (match, traits) => {
+  $('camera-view').classList.toggle('tracking', !!match);
+  if (!match || !traits) {
+    liveId = 0;
+    $('live-card').classList.remove('has-match');
+    $('live-name').textContent = '…';
+    $('live-score').textContent = '';
+    $('live-reason').textContent = 'Waiting for a face.';
+    return;
+  }
+  $('live-score').textContent = `${match.similarity}% match`;
+  const [reason] = explainMatch(traits, match, 1);
+  $('live-reason').textContent = reason ? `${titleCase(reason.you)}, like its ${reason.them.replace(/^an? /, '')}.` : '';
+  if (match.pokemon.id === liveId) return;
+
+  // A new Pokémon took the lead: swap the print.
+  liveId = match.pokemon.id;
+  const card = $('live-card');
+  card.classList.add('has-match');
+  card.classList.remove('swap');
+  void card.offsetWidth;
+  card.classList.add('swap');
+  const art = $<HTMLImageElement>('live-art');
+  art.classList.remove('loaded');
+  art.src = artworkUrl(match.pokemon.id);
+  art.alt = match.pokemon.name;
+  $('live-name').textContent = match.pokemon.name;
+});
+
 function stopCamera() {
+  live.stop();
   stream?.getTracks().forEach((t) => t.stop());
   stream = null;
   video.srcObject = null;
@@ -126,6 +159,7 @@ $('camera-btn').addEventListener('click', async () => {
     });
     video.srcObject = stream;
     show('camera');
+    live.start();
   } catch (err) {
     console.error(err);
     toast('Couldn’t open the camera. Check the permission, or choose a photo instead.');

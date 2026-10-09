@@ -1,4 +1,9 @@
-import { FaceLandmarker, FilesetResolver, type NormalizedLandmark } from '@mediapipe/tasks-vision';
+import {
+  FaceLandmarker,
+  FilesetResolver,
+  type FaceLandmarkerResult,
+  type NormalizedLandmark,
+} from '@mediapipe/tasks-vision';
 
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/wasm';
 const MODEL_URL =
@@ -111,12 +116,41 @@ function faceArea(lm: NormalizedLandmark[]): number {
   return (maxX - minX) * (maxY - minY);
 }
 
+let videoLandmarkerPromise: Promise<FaceLandmarker> | null = null;
+
+/** A second landmarker in VIDEO mode, which tracks between frames for live use. */
+export function loadVideoLandmarker(): Promise<FaceLandmarker> {
+  videoLandmarkerPromise ??= (async () => {
+    const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
+    return FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: MODEL_URL },
+      runningMode: 'VIDEO',
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+    });
+  })();
+  videoLandmarkerPromise.catch(() => (videoLandmarkerPromise = null));
+  return videoLandmarkerPromise;
+}
+
 /** Detects the largest face in the image and measures its proportions. */
 export async function analyzeFace(
   image: HTMLImageElement | HTMLCanvasElement,
 ): Promise<FaceAnalysis | null> {
   const landmarker = await loadLandmarker();
-  const result = landmarker.detect(image);
+  return measure(landmarker.detect(image), image.width, image.height);
+}
+
+/** Measures the face in the current video frame. Timestamps must increase. */
+export function analyzeVideoFrame(
+  landmarker: FaceLandmarker,
+  video: HTMLVideoElement,
+  timestamp: number,
+): FaceAnalysis | null {
+  return measure(landmarker.detectForVideo(video, timestamp), video.videoWidth, video.videoHeight);
+}
+
+function measure(result: FaceLandmarkerResult, w: number, h: number): FaceAnalysis | null {
   if (result.faceLandmarks.length === 0) return null;
 
   let best = 0;
@@ -129,9 +163,7 @@ export async function analyzeFace(
 
   // Landmarks are normalised per axis; convert to a uniform pixel scale.
   // MediaPipe's z uses roughly the same scale as x.
-  const w = image.width;
-  const h = image.height;
-  const P = (i: number): Vec3 => [lm[i].x * w, lm[i].y * h, lm[i].z * w];
+  const P =(i: number): Vec3 => [lm[i].x * w, lm[i].y * h, lm[i].z * w];
   const D = (a: number, b: number) => dist(P(a), P(b));
   const avg = (a: number, b: number) => (a + b) / 2;
   const bs = (name: string) => blend[name] ?? 0;

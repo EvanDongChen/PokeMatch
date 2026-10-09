@@ -426,9 +426,116 @@ button {
 /* ------------------------------------------------------------------ camera */
 
 .camera {
-  max-width: 640px;
+  max-width: 940px;
   margin: 0 auto;
   padding-bottom: 48px;
+}
+
+.camera-note {
+  margin-top: 6px;
+  font-size: 1.2rem;
+}
+
+.camera-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(220px, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.live-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+.camera-view.tracking .camera-guide {
+  opacity: 0;
+}
+
+.camera-guide {
+  transition: opacity 0.4s ease;
+}
+
+/* Live reading card */
+
+.live-card {
+  position: relative;
+  margin-top: 30px;
+  padding: 18px 18px 20px;
+  background: var(--paper-light);
+  box-shadow: 0 1px 2px rgb(60 40 20 / 0.15), 0 12px 24px -12px rgb(60 40 20 / 0.45);
+  rotate: 1.8deg;
+}
+
+.live-card.swap {
+  animation: swap 0.35s ease-out;
+}
+
+@keyframes swap {
+  from {
+    translate: 0 -6px;
+    rotate: -1deg;
+  }
+}
+
+.live-art {
+  margin: 10px 0 6px;
+  aspect-ratio: 1;
+  background: #efe6d2;
+  display: grid;
+  place-items: center;
+}
+
+.live-art img {
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.live-art img.loaded {
+  opacity: 1;
+}
+
+.live-card:not(.has-match) .live-art::after {
+  content: '?';
+  font-family: var(--hand);
+  font-size: 5rem;
+  color: var(--faint);
+  opacity: 0.5;
+}
+
+.live-card:not(.has-match) .live-art img {
+  display: none;
+}
+
+.live-name {
+  font-family: var(--display);
+  font-size: 2.1rem;
+  line-height: 1.05;
+}
+
+.live-score {
+  font-family: var(--typed);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-top: 4px;
+}
+
+.live-reason {
+  margin-top: 8px;
+  font-size: 1.08rem;
+  line-height: 1.35;
+  min-height: 2.7em;
 }
 
 .polaroid {
@@ -445,12 +552,18 @@ button {
 .camera-view {
   position: relative;
   overflow: hidden;
+  aspect-ratio: 4 / 3;
+  max-height: 58vh;
+  margin: 0 auto;
   background: #1d1a17;
 }
 
+/* Video and overlay crop identically, so the mesh stays on the face. */
 .camera-view video {
   display: block;
   width: 100%;
+  height: 100%;
+  object-fit: cover;
   transform: scaleX(-1);
 }
 
@@ -1257,6 +1370,59 @@ button {
 
   .lower {
     grid-template-columns: 1fr;
+  }
+
+  .camera-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .camera-view {
+    aspect-ratio: 3 / 4;
+    max-height: 46vh;
+  }
+
+  /* Compact live card pinned over the bottom of the camera view. */
+  .camera-layout {
+    position: relative;
+  }
+
+  .live-card {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: 64px;
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    column-gap: 14px;
+    align-items: center;
+    margin: 0;
+    padding: 8px 14px 8px 8px;
+    background: rgb(251 248 241 / 0.95);
+    rotate: -1deg;
+  }
+
+  .live-card .section-label,
+  .live-card .tape-strip,
+  .live-reason {
+    display: none;
+  }
+
+  .live-art {
+    grid-row: span 2;
+    margin: 0;
+  }
+
+  .live-card:not(.has-match) .live-art::after {
+    font-size: 2.4rem;
+  }
+
+  .live-name {
+    font-size: 1.5rem;
+  }
+
+  .live-score {
+    margin-top: 0;
   }
 
   .measure-grid {
