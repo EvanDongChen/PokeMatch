@@ -21,6 +21,118 @@ const LIPS = uniq(FaceLandmarker.FACE_LANDMARKS_LIPS);
 const TESSELATION = FaceLandmarker.FACE_LANDMARKS_TESSELATION;
 const CONTOURS = FaceLandmarker.FACE_LANDMARKS_CONTOURS;
 
+const LEFT_EYE = uniq(FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS);
+const RIGHT_EYE = uniq(FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS);
+
+// ------------------------------------------------------------- eyes and mouth
+
+interface FeatureMapping {
+  /** Where an eye or lip landmark lands, or null for any other landmark. */
+  exact(index: number): Point | null;
+  /** Carries any other point along with the eyes and mouth. */
+  warp(p: Point): Point;
+}
+
+const mean = (list: Point[]) => ({
+  x: list.reduce((s, p) => s + p.x, 0) / list.length,
+  y: list.reduce((s, p) => s + p.y, 0) / list.length,
+});
+const spanX = (list: Point[]) => Math.max(...list.map((p) => p.x)) - Math.min(...list.map((p) => p.x));
+
+/** The similarity (move, turn, scale) taking p1 to q1 and p2 to q2. */
+function similarity(p1: Point, p2: Point, q1: Point, q2: Point) {
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const ex = q2.x - q1.x, ey = q2.y - q1.y;
+  const d = dx * dx + dy * dy || 1e-9;
+  // (q2 - q1) / (p2 - p1) as complex numbers.
+  const a = (ex * dx + ey * dy) / d;
+  const b = (ey * dx - ex * dy) / d;
+  return (p: Point) => ({
+    x: q1.x + a * (p.x - p1.x) - b * (p.y - p1.y),
+    y: q1.y + b * (p.x - p1.x) + a * (p.y - p1.y),
+  });
+}
+
+/** The affine map taking three points to three others, or null if they are in a line. */
+function affine([p1, p2, p3]: Point[], [q1, q2, q3]: Point[]) {
+  const det = (p2.x - p1.x) * (p3.y - p1.y) - (p3.x - p1.x) * (p2.y - p1.y);
+  if (Math.abs(det) < 1e-6) return null;
+  // Barycentric coordinates of p in the source triangle, applied to the target.
+  return (p: Point) => {
+    const u = ((p.x - p1.x) * (p3.y - p1.y) - (p3.x - p1.x) * (p.y - p1.y)) / det;
+    const v = ((p2.x - p1.x) * (p.y - p1.y) - (p.x - p1.x) * (p2.y - p1.y)) / det;
+    return {
+      x: q1.x + u * (q2.x - q1.x) + v * (q3.x - q1.x),
+      y: q1.y + u * (q2.y - q1.y) + v * (q3.y - q1.y),
+    };
+  };
+}
+
+/**
+ * Lines the face's eyes and mouth up with the Pokémon's, when they were found
+ * in its artwork: each eye and the lips are drawn around the Pokémon's own,
+ * and everything else is carried along so the face keeps its layout.
+ */
+function featureMapping(pts: Point[], sil: Silhouette): FeatureMapping | null {
+  if (sil.eyes.length === 0) return null;
+
+  // Image-left eye first, to pair with the Pokémon's eyes (also left to right).
+  const faceEyes = [LEFT_EYE, RIGHT_EYE]
+    .map((set) => {
+      const list = set.map((i) => pts[i]);
+      return { set: new Set(set), c: mean(list), w: spanX(list) };
+    })
+    .sort((a, b) => a.c.x - b.c.x);
+  const lips = LIPS.map((i) => pts[i]);
+  const faceMouth = { c: mean(lips), w: spanX(lips) };
+  // A Pokémon drawn side-on may show one eye: both of the face's go there.
+  const monEyes = sil.eyes.length >= 2 ? sil.eyes.slice(0, 2) : [sil.eyes[0], sil.eyes[0]];
+  const mon = sil.mouth;
+
+  let warp: (p: Point) => Point;
+  const [e1, e2] = faceEyes.map((e) => e.c);
+  // Where the mouth is, or where the face's proportions put it, kept inside
+  // the head so the lips never slide down onto the body.
+  const { box } = sil;
+  const intoHead = (p: Point) => ({
+    x: Math.min(box.x + box.w * 0.95, Math.max(box.x + box.w * 0.05, p.x)),
+    y: Math.min(box.y + box.h * 0.92, Math.max(box.y, p.y)),
+  });
+  let mouthAt: Point;
+  if (sil.eyes.length >= 2) {
+    mouthAt = mon ?? intoHead(similarity(e1, e2, monEyes[0], monEyes[1])(faceMouth.c));
+    warp = affine([e1, e2, faceMouth.c], [monEyes[0], monEyes[1], mouthAt]) ?? similarity(e1, e2, monEyes[0], monEyes[1]);
+  } else {
+    const eyesMid = mean([e1, e2]);
+    if (mon) warp = similarity(eyesMid, faceMouth.c, monEyes[0], mon);
+    else {
+      // Scale so the face's eye is the size of the Pokémon's.
+      const k = monEyes[0].w / ((faceEyes[0].w + faceEyes[1].w) / 2);
+      warp = (p) => ({ x: monEyes[0].x + (p.x - eyesMid.x) * k, y: monEyes[0].y + (p.y - eyesMid.y) * k });
+    }
+    mouthAt = mon ?? intoHead(warp(faceMouth.c));
+  }
+
+  // Detected mouth boxes can take in a whole muzzle, so keep the lips no
+  // wider than the eyes are apart.
+  const warpedW = Math.hypot(...(['x', 'y'] as const).map((a) => warp(pts[291])[a] - warp(pts[61])[a]));
+  const eyeGap = Math.hypot(monEyes[1].x - monEyes[0].x, monEyes[1].y - monEyes[0].y);
+  const mouthW = Math.min(mon?.w ?? warpedW, eyeGap > 0 ? eyeGap * 1.1 : Infinity);
+  const around = (c: Point, from: Point, k: number) => (p: Point) => ({ x: c.x + (p.x - from.x) * k, y: c.y + (p.y - from.y) * k });
+  const eyeMaps = faceEyes.map((e, k) => around(monEyes[k], e.c, monEyes[k].w / e.w));
+  const lipMap = around(mouthAt, faceMouth.c, mouthW / faceMouth.w);
+  const lipSet = new Set(LIPS);
+
+  return {
+    exact(i) {
+      const eye = faceEyes.findIndex((e) => e.set.has(i));
+      if (eye >= 0) return eyeMaps[eye](pts[i]);
+      return lipSet.has(i) ? lipMap(pts[i]) : null;
+    },
+    warp,
+  };
+}
+
 /** Ink colours, matching the page's CSS tokens. */
 const INK = '#2b2622';
 const RED = '#b8322a';
@@ -363,15 +475,27 @@ export class Stage {
     let seed = 1234;
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
-    const dst: Point[] = pts.map((p, i) => {
-      if (ovalSet.has(i)) return outlineAt(Math.atan2(p.y - cy, p.x - cx));
-      // Place inner features at the same relative spot in the Pokémon's body.
+    // Without eyes found in the artwork, place inner features at the same
+    // relative spot in the Pokémon's head.
+    const byBox = (p: Point) => {
       const u = (p.x - minX) / (maxX - minX);
       const v = (p.y - minY) / (maxY - minY);
       return nearestInterior({
         x: box.x + box.w * lerp(0.12, 0.88, u) + (rand() - 0.5) * 0.02,
         y: box.y + box.h * lerp(0.1, 0.9, v) + (rand() - 0.5) * 0.02,
       });
+    };
+    const features = featureMapping(pts, sil);
+    const placeInside = (p: Point) => {
+      // Keep brows, nose and mesh on the Pokémon even where the face is wider.
+      const near = nearestInterior(p);
+      return (near.x - p.x) ** 2 + (near.y - p.y) ** 2 > 0.015 ** 2 ? near : p;
+    };
+
+    const dst: Point[] = pts.map((p, i) => {
+      if (ovalSet.has(i)) return outlineAt(Math.atan2(p.y - cy, p.x - cx));
+      if (!features) return byBox(p);
+      return features.exact(i) ?? placeInside(features.warp(p));
     });
 
     this.particles = pts.map((src, index) => {
