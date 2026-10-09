@@ -12,6 +12,10 @@ npm run dev      # http://localhost:5173
 npm run build    # production build in dist/
 ```
 
+## Deployment
+
+Pushing to `main` builds the site and publishes it to GitHub Pages ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)). In the repo settings, under **Pages**, the source must be set to **GitHub Actions**. You can also run the workflow by hand from the Actions tab.
+
 ## How matching works
 
 1. **Face landmarks.** [MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) finds 478 3D landmarks plus expression scores (smile, brow raise and so on). If there are several faces, the largest is used.
