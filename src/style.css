@@ -238,6 +238,20 @@ button {
   outline-offset: 4px;
 }
 
+/* Artwork fades in as it arrives (main.ts adds .loaded). */
+.specimen img,
+.card-art img,
+.runner img {
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+.specimen img.loaded,
+.card-art img.loaded,
+.runner img.loaded {
+  opacity: 1;
+}
+
 /* ------------------------------------------------------------------- intro */
 
 .intro {
@@ -554,8 +568,8 @@ button {
 
 .stage-fig {
   position: relative;
-  height: clamp(460px, 46vw, 580px);
-  margin: 10px -30px 0;
+  height: clamp(440px, 42vw, 540px);
+  margin: 4px -30px 0;
 }
 
 #stage {
@@ -567,7 +581,7 @@ button {
 
 .skip {
   position: absolute;
-  top: 0;
+  bottom: 0;
   right: 30px;
 }
 

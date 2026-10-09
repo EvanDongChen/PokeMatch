@@ -159,6 +159,10 @@ export class Stage {
   private height = 0;
   private photo: HTMLCanvasElement | null = null;
   private crop = { x: 0, y: 0, s: 1 };
+  /** Crop shown while developing; eased into `crop` when the scan starts. */
+  private cropFrom: { x: number; y: number; s: number } | null = null;
+  /** True between preview() and play(): the polaroid is still developing. */
+  private developing = false;
   private points: Point[] = [];
   private particles: Particle[] = [];
   private links: Link[] = [];
@@ -199,8 +203,27 @@ export class Stage {
     if (this.phase === 'done' && this.photo) this.draw(this.clock);
   }
 
+  /** Shows the photo as an undeveloped polaroid while the face is analysed. */
+  preview(photo: HTMLCanvasElement) {
+    cancelAnimationFrame(this.frame);
+    this.photo = photo;
+    const s = Math.min(photo.width, photo.height);
+    this.crop = { x: (photo.width - s) / 2, y: Math.max(0, (photo.height - s) * 0.3), s };
+    this.cropFrom = null;
+    this.points = [];
+    this.particles = [];
+    this.links = [];
+    this.winner = null;
+    this.mode = 'full';
+    this.clock = 0;
+    this.phase = 'done';
+    this.developing = true;
+    this.draw(0);
+  }
+
   /** Sets the analysed photo; landmark coordinates are in photo pixels. */
   setFace(photo: HTMLCanvasElement, face: FaceAnalysis) {
+    this.cropFrom = this.photo === photo ? { ...this.crop } : null;
     this.photo = photo;
     const xs = face.points.map((p) => p.x);
     const ys = face.points.map((p) => p.y);
@@ -234,6 +257,7 @@ export class Stage {
     this.schedule = [];
     this.particles = [];
     this.links = [];
+    this.developing = false;
     this.clock = opts.mode === 'full' ? 0 : T.morphStart;
 
     for (const c of opts.candidates) c.then((s) => this.shown.push(s)).catch(() => {});
@@ -398,10 +422,11 @@ export class Stage {
     const w = this.width;
     const h = this.height;
     if (w >= 640) {
-      const s = Math.min(h * 0.66, w * 0.33);
+      // The polaroid frame and captions hang ~0.2s + 40px below the photo.
+      const s = Math.min((h - 70) / 1.2, w * 0.33);
       const gap = (w - 2 * s) / 3.2;
-      const y = (h - s) / 2 - 22;
-      return { face: { x: gap, y, s }, mon: { x: w - gap - s, y, s }, wide: true };
+      const y = 26;
+      return { face: { x: gap, y, s }, mon: { x: w - gap - s, y: y + s * 0.03, s }, wide: true };
     }
     const s = Math.min(w * 0.6, h * 0.31);
     return { face: { x: (w - s) / 2, y: 30, s }, mon: { x: (w - s) / 2, y: h - 70 - s, s }, wide: false };
@@ -462,10 +487,18 @@ export class Stage {
     ctx.restore();
   }
 
-  private drawPolaroid(face: Box, photoAlpha: number) {
+  private drawPolaroid(face: Box, photoAlpha: number, developed: number, crop: { x: number; y: number; s: number }) {
     const ctx = this.ctx;
     const pad = face.s * 0.045;
     const bottom = face.s * 0.15;
+    const blit = (filter: string, alpha: number) => {
+      if (alpha <= 0) return;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.filter = filter;
+      ctx.drawImage(this.photo!, crop.x, crop.y, crop.s, crop.s, face.x, face.y, face.s, face.s);
+      ctx.restore();
+    };
     this.tilted(face, FACE_TILT, () => {
       // Frame and its shadow on the page.
       ctx.save();
@@ -476,17 +509,29 @@ export class Stage {
       ctx.fillRect(face.x - pad, face.y - pad, face.s + 2 * pad, face.s + pad + bottom);
       ctx.restore();
 
+      // Instant film: murky and soft until it develops.
       ctx.save();
-      ctx.globalAlpha = photoAlpha;
-      ctx.filter = 'sepia(0.22) saturate(0.85) contrast(1.02)';
-      ctx.drawImage(this.photo!, this.crop.x, this.crop.y, this.crop.s, this.crop.s, face.x, face.y, face.s, face.s);
-      ctx.restore();
-      if (photoAlpha < 1) {
+      ctx.beginPath();
+      ctx.rect(face.x, face.y, face.s, face.s);
+      ctx.clip();
+      ctx.fillStyle = '#4a4238';
+      ctx.fillRect(face.x, face.y, face.s, face.s);
+      blit('sepia(0.9) brightness(0.55) contrast(0.55) blur(4px)', photoAlpha * (1 - developed) * 0.85);
+      blit('sepia(0.22) saturate(0.85) contrast(1.02)', photoAlpha * developed);
+      if (photoAlpha < 1 && developed >= 1) {
         ctx.fillStyle = `rgba(251,248,241,${(1 - photoAlpha) * 0.9})`;
         ctx.fillRect(face.x, face.y, face.s, face.s);
       }
+      ctx.restore();
 
-      this.text('subject', face.x + face.s / 2, face.y + face.s + bottom * 0.55, `400 ${Math.max(15, face.s * 0.06)}px ${HAND}`, BLUE, 0.9);
+      this.text(
+        developed < 1 && this.developing ? 'developing…' : 'subject',
+        face.x + face.s / 2,
+        face.y + face.s + bottom * 0.55,
+        `400 ${Math.max(15, face.s * 0.06)}px ${HAND}`,
+        BLUE,
+        0.9,
+      );
 
       // Masking tape across the top edge.
       const c = this.center(face);
@@ -544,10 +589,25 @@ export class Stage {
     const reveal = progress(t, T.revealStart, T.revealStart + 700);
     const scanned = this.mode === 'morph' ? 1 : progress(t, T.scanStart, T.scanEnd);
 
+    // The polaroid develops as the scan begins, easing from the preview crop to the face.
+    const developed = this.developing ? 0 : this.mode === 'morph' ? 1 : easeOut(progress(t, 0, 700));
+    const settle = easeInOut(progress(t, 0, 500));
+    const from = this.mode === 'full' && !this.developing ? this.cropFrom : null;
+    const crop = from
+      ? { x: lerp(from.x, this.crop.x, settle), y: lerp(from.y, this.crop.y, settle), s: lerp(from.s, this.crop.s, settle) }
+      : this.crop;
     // The photo fades a little while its points are lifted off, then returns.
-    const photoAlpha = (this.mode === 'morph' ? 1 : easeOut(progress(t, 0, T.photoIn))) * (1 - 0.6 * morph * (1 - 0.75 * reveal));
-    this.drawPolaroid(face, photoAlpha);
+    const photoAlpha = 1 - 0.6 * morph * (1 - 0.75 * reveal);
+    this.drawPolaroid(face, photoAlpha, developed, crop);
     this.drawPlate(mon);
+
+    if (this.points.length === 0) {
+      // Still developing: no landmarks yet.
+      this.drawSpecimen(t, mon, 0);
+      this.text('FIG. 1a  developing…', face.x + face.s / 2, face.y + face.s * 1.15 + 24, `400 12px ${TYPED}`, INK, 0.75);
+      this.text('FIG. 1b  awaiting comparison', mon.x + mon.s / 2, mon.y + mon.s + 30, `400 12px ${TYPED}`, INK, 0.75);
+      return;
+    }
 
     // Pencil guide line sweeping down the photo.
     if (this.mode === 'full' && t > T.scanStart && t < T.scanEnd + 200) {

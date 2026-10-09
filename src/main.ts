@@ -208,6 +208,8 @@ function buildReadout(traits: TraitVector) {
 
 async function start(photo: HTMLCanvasElement) {
   show('session');
+  stage.preview(photo);
+  $('skip-btn').hidden = true;
   $('results').hidden = true;
   $('readout').hidden = false;
   $('readout-grid').replaceChildren();
@@ -261,6 +263,7 @@ async function runStage(match: Match, mode: 'full' | 'morph') {
 
   $('skip-btn').hidden = false;
   if (mode === 'full') renderResults(session.selected);
+  const scrollAtStart = window.scrollY;
 
   await stage.play({
     mode: reducedMotion ? 'morph' : mode,
@@ -274,7 +277,13 @@ async function runStage(match: Match, mode: 'full' | 'morph') {
     },
   });
   $('skip-btn').hidden = true;
-  if (mode === 'full') revealResults();
+  if (mode === 'full') {
+    revealResults();
+    // Lead the eye to the conclusion, unless the viewer has already scrolled.
+    if (Math.abs(window.scrollY - scrollAtStart) < 40 && !$('screen-session').hidden) {
+      setTimeout(() => $('steps').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' }), 600);
+    }
+  }
 }
 
 function revealResults() {
@@ -324,6 +333,8 @@ function renderResults(index: number) {
   $('notice').hidden = notices.length === 0;
   $('notice').textContent = notices.join(' ');
 
+  document.title = `${pokemon.name} · PokéMatch`;
+
   // Index card
   const card = $('specimen-card');
   card.classList.remove('deal');
@@ -331,6 +342,7 @@ function renderResults(index: number) {
   card.classList.add('deal');
   $('card-no').textContent = dexNo(pokemon.id);
   $('card-types').replaceChildren(...pokemon.types.map(typeStamp));
+  $('card-art').classList.remove('loaded');
   $<HTMLImageElement>('card-art').src = artworkUrl(pokemon.id);
   $<HTMLImageElement>('card-art').alt = pokemon.name;
   $('card-name').textContent = pokemon.name;
@@ -399,8 +411,27 @@ $('replay-btn').addEventListener('click', () => {
 
 $('again-btn').addEventListener('click', () => {
   session = null;
+  document.title = 'PokéMatch';
   show('pick');
 });
+
+// Camera shortcuts: space or enter to snap, escape to go back.
+window.addEventListener('keydown', (e) => {
+  if ($('screen-camera').hidden || e.repeat) return;
+  if (e.key === 'Escape') show('pick');
+  else if ((e.key === ' ' || e.key === 'Enter') && document.activeElement?.id !== 'camera-cancel') {
+    e.preventDefault();
+    $('capture-btn').click();
+  }
+});
+
+// Fade images in as they arrive instead of popping.
+document.addEventListener(
+  'load',
+  (e) => e.target instanceof HTMLImageElement && e.target.classList.add('loaded'),
+  true,
+);
+document.querySelectorAll('img').forEach((img) => img.complete && img.naturalWidth && img.classList.add('loaded'));
 
 $('download-btn').addEventListener('click', async () => {
   if (!session) return;
