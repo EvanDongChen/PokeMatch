@@ -3,185 +3,181 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#07070f" />
-    <meta name="description" content="Map 478 points of your face onto all 1025 Pokémon and find your match. Runs entirely on your device." />
+    <meta name="theme-color" content="#cdbf9f" />
+    <meta name="description" content="A field journal that measures your face and finds the Pokémon you most resemble. Runs entirely on your device." />
     <title>PokéMatch</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23fff' stroke='%23222' stroke-width='8'/%3E%3Cpath d='M4 50a46 46 0 0 1 92 0z' fill='%23e3350d' stroke='%23222' stroke-width='8'/%3E%3Ccircle cx='50' cy='50' r='13' fill='%23fff' stroke='%23222' stroke-width='8'/%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='14' y='8' width='72' height='84' rx='4' fill='%23f6f0e2' stroke='%232b2622' stroke-width='6'/%3E%3Cpath d='M30 34h40M30 50h40M30 66h24' stroke='%23b8322a' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Kalam:wght@300;400;700&family=Libre+Caslon+Display&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <div class="backdrop" aria-hidden="true">
-      <div class="aurora a1"></div>
-      <div class="aurora a2"></div>
-      <div class="aurora a3"></div>
-      <div class="grid"></div>
-    </div>
+    <article class="page">
+      <header class="masthead">
+        <a class="mast-title" href="./">PokéMatch</a>
+        <span class="mast-sub">Field Journal of Facial Taxonomy</span>
+        <span class="mast-vol">Vol. I &nbsp;·&nbsp; 1025 species on file</span>
+      </header>
 
-    <nav class="nav">
-      <a class="brand" href="./" aria-label="PokéMatch home">
-        <span class="ball" aria-hidden="true"></span>
-        <span>PokéMatch</span>
-      </a>
-      <span class="chip"><i class="live-dot"></i>On-device AI</span>
-    </nav>
-
-    <main>
-      <!-- 1. Landing -->
-      <section id="screen-pick" class="screen hero">
-        <div class="hero-copy">
-          <p class="kicker">Face mapping × Pokédex</p>
-          <h1>Which <span class="grad">Pokémon</span> has your face?</h1>
-          <p class="lede">
-            PokéMatch maps 478 points on your face, measures 10 traits and finds your match among all 1025 Pokémon.
+      <!-- 1. Intro -->
+      <section id="screen-pick" class="screen intro">
+        <div class="intro-text">
+          <p class="entry-label">Entry 001 &nbsp;—&nbsp; Purpose of study</p>
+          <h1>Which Pokémon do you <span class="underlined">resemble</span>?</h1>
+          <p class="hand intro-note">
+            Bring me a clear photo of a face. I’ll plot 478 points on it, measure the jaw, eyes, brow and smile,
+            and look up its closest relative among every Pokémon on file.
           </p>
 
-          <div id="dropzone" class="dropzone glass">
-            <div class="drop-actions">
-              <label class="btn primary">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>
-                Upload a photo
+          <div id="dropzone" class="photo-slot">
+            <i class="mount tl"></i><i class="mount tr"></i><i class="mount bl"></i><i class="mount br"></i>
+            <p class="slot-label">Affix photograph here</p>
+            <div class="slot-actions">
+              <label class="tape">
+                Choose a photo
                 <input id="file-input" type="file" accept="image/*" hidden />
               </label>
-              <button id="camera-btn" class="btn ghost">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.5l1.5-2h6l1.5 2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><circle cx="12" cy="12.5" r="3.5" /></svg>
-                Use camera
-              </button>
+              <button id="camera-btn" class="tape tape-alt">Use the camera</button>
             </div>
-            <p class="drop-hint">or drop or paste an image · front-facing works best</p>
+            <p class="hand slot-hint">or drop one here, or paste it. Facing forward works best.</p>
           </div>
 
-          <ul class="stats">
-            <li><b>478</b><span>landmarks</span></li>
-            <li><b>10</b><span>traits</span></li>
-            <li><b>1025</b><span>Pokémon</span></li>
-            <li><b>0</b><span>uploads</span></li>
-          </ul>
+          <p class="fine">Photographs are examined on this device and never sent anywhere.</p>
         </div>
 
-        <div class="hero-visual" aria-hidden="true">
-          <div class="orbit">
-            <img data-id="25" alt="" /><img data-id="143" alt="" /><img data-id="39" alt="" />
-            <img data-id="54" alt="" /><img data-id="94" alt="" /><img data-id="133" alt="" />
-          </div>
-          <div class="scanner">
-            <div class="scanner-ring"></div>
-            <div class="scanner-ring r2"></div>
-            <img id="hero-mon" class="hero-mon" alt="" />
-            <div class="scanner-sweep"></div>
-          </div>
-          <p id="hero-caption" class="hero-caption">WHO'S THAT POKÉMON?</p>
-        </div>
+        <aside class="specimens" aria-label="Example specimens">
+          <figure class="specimen s1">
+            <span class="tape-strip"></span>
+            <img data-id="143" alt="Snorlax" />
+            <figcaption>No. 143 · <em>very round face</em></figcaption>
+          </figure>
+          <figure class="specimen s2">
+            <span class="tape-strip"></span>
+            <img data-id="39" alt="Jigglypuff" />
+            <figcaption>No. 039 · <em>enormous smile</em></figcaption>
+          </figure>
+          <figure class="specimen s3">
+            <span class="tape-strip"></span>
+            <img data-id="65" alt="Alakazam" />
+            <figcaption>No. 065 · <em>tall forehead</em></figcaption>
+          </figure>
+          <figure class="specimen s4">
+            <span class="tape-strip"></span>
+            <img data-id="68" alt="Machamp" />
+            <figcaption>No. 068 · <em>square jaw</em></figcaption>
+          </figure>
+        </aside>
       </section>
 
       <!-- 2. Camera -->
       <section id="screen-camera" class="screen camera" hidden>
-        <div class="camera-frame glass">
-          <video id="camera-video" autoplay playsinline muted></video>
-          <div class="camera-guide" aria-hidden="true"></div>
-          <div id="countdown" class="countdown" hidden></div>
+        <p class="entry-label">Photographing subject</p>
+        <div class="polaroid camera-polaroid">
+          <div class="camera-view">
+            <video id="camera-video" autoplay playsinline muted></video>
+            <div class="camera-guide" aria-hidden="true"></div>
+            <div id="countdown" class="countdown hand" hidden></div>
+          </div>
+          <p class="hand polaroid-caption">look straight at the lens</p>
         </div>
         <div class="camera-bar">
-          <button id="camera-cancel" class="btn ghost">Cancel</button>
-          <button id="capture-btn" class="shutter" aria-label="Take photo"><span></span></button>
-          <span class="camera-tip">Look straight ahead</span>
+          <button id="camera-cancel" class="link-btn">← back</button>
+          <button id="capture-btn" class="shutter" aria-label="Take photo"></button>
+          <span></span>
         </div>
       </section>
 
-      <!-- 3. Session: live mapping + results -->
+      <!-- 3. Observation -->
       <section id="screen-session" class="screen session" hidden>
-        <div class="stage-wrap glass">
-          <canvas id="stage"></canvas>
-          <button id="skip-btn" class="skip">Skip ›</button>
+        <div class="entry-head">
+          <span>Observation No. <b id="obs-no" class="hand"></b></span>
+          <span>Date <b id="obs-date" class="hand"></b></span>
+          <span>Subject <b class="hand">unnamed</b></span>
         </div>
 
-        <ol id="steps" class="steps">
-          <li data-phase="scan"><i></i>Landmarks</li>
-          <li data-phase="search"><i></i>Pokédex search</li>
-          <li data-phase="morph"><i></i>Feature mapping</li>
-          <li data-phase="reveal"><i></i>Match</li>
+        <figure class="stage-fig">
+          <canvas id="stage"></canvas>
+          <button id="skip-btn" class="link-btn skip">skip →</button>
+        </figure>
+
+        <ol id="steps" class="checklist">
+          <li data-phase="scan">Landmarks plotted</li>
+          <li data-phase="search">Index consulted</li>
+          <li data-phase="morph">Features traced</li>
+          <li data-phase="reveal">Specimen identified</li>
         </ol>
 
-        <div id="readout" class="readout glass">
-          <p class="panel-title"><span>Biometric readout</span><span id="readout-status">measuring…</span></p>
-          <div id="readout-grid" class="readout-grid"></div>
+        <div id="readout" class="measurements">
+          <p class="section-label">Measurements <span id="readout-status" class="hand"></span></p>
+          <div id="readout-grid" class="measure-grid"></div>
         </div>
 
         <div id="results" class="results" hidden>
-          <div id="notice" class="notice" hidden></div>
+          <div id="notice" class="sticky" hidden></div>
 
-          <div class="result-grid">
-            <div class="card-zone">
-              <div id="holo" class="holo">
-                <div class="holo-inner">
-                  <div class="holo-top">
-                    <span id="holo-name" class="holo-name"></span>
-                    <span id="holo-score" class="holo-score"></span>
-                  </div>
-                  <div class="holo-art"><img id="holo-art" alt="" /></div>
-                  <div id="holo-types" class="types"></div>
-                  <ul id="holo-traits" class="holo-traits"></ul>
-                  <div class="holo-foot"><span id="holo-id"></span><span>PokéMatch</span></div>
-                </div>
-                <div class="holo-shine"></div>
-                <div class="holo-glare"></div>
+          <div class="conclusion">
+            <div id="specimen-card" class="index-card">
+              <span class="clip" aria-hidden="true"></span>
+              <div class="card-head">
+                <span id="card-no"></span>
+                <span id="card-types" class="types"></span>
               </div>
+              <div class="card-art"><img id="card-art" alt="" /></div>
+              <dl class="card-fields">
+                <div><dt>Name</dt><dd id="card-name" class="hand"></dd></div>
+                <div><dt>Height</dt><dd id="card-height" class="hand"></dd></div>
+                <div><dt>Weight</dt><dd id="card-weight" class="hand"></dd></div>
+              </dl>
             </div>
 
-            <div class="result-side">
-              <p id="match-eyebrow" class="eyebrow">Your Pokémon match</p>
+            <div class="verdict">
+              <p class="entry-label">Conclusion</p>
+              <p class="hand verdict-lead">Subject most closely resembles</p>
               <h2 id="mon-name" class="mon-name"></h2>
-              <div class="gauge-row">
-                <div class="gauge">
-                  <svg viewBox="0 0 120 120" aria-hidden="true">
-                    <circle cx="60" cy="60" r="52" class="gauge-track" />
-                    <circle id="gauge-fill" cx="60" cy="60" r="52" class="gauge-fill" />
-                  </svg>
-                  <div class="gauge-value"><b id="gauge-value">0</b><span>% match</span></div>
+              <div class="verdict-row">
+                <div class="score-stamp" aria-label="Match score">
+                  <b id="gauge-value">0</b><span>% match</span>
                 </div>
-                <p id="mon-blurb" class="blurb"></p>
+                <p id="mon-blurb" class="hand blurb"></p>
               </div>
 
-              <ul id="reasons" class="reasons"></ul>
+              <p class="section-label">Supporting observations</p>
+              <ol id="reasons" class="observations"></ol>
 
-              <div class="result-actions">
-                <button id="download-btn" class="btn primary">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M4 20h16" /></svg>
-                  Download card
-                </button>
-                <button id="replay-btn" class="btn ghost">↻ Replay mapping</button>
-                <button id="again-btn" class="btn ghost">New photo</button>
+              <div class="actions">
+                <button id="download-btn" class="tape">Save this page</button>
+                <button id="replay-btn" class="tape tape-alt">Watch the tracing again</button>
+                <button id="again-btn" class="link-btn">New subject →</button>
               </div>
             </div>
           </div>
 
-          <div class="lower-grid">
-            <div class="panel glass">
-              <p class="panel-title"><span>Trait radar</span></p>
+          <div class="lower">
+            <figure class="radar-fig">
               <div class="legend">
-                <span><i class="swatch you"></i>You</span>
-                <span><i id="legend-mon-swatch" class="swatch mon"></i><span id="legend-mon"></span></span>
+                <span><i class="pen you"></i>subject</span>
+                <span><i class="pen mon"></i><span id="legend-mon"></span></span>
               </div>
               <div id="radar" class="radar-host"></div>
-            </div>
+              <figcaption>FIG. 2 &nbsp;Trait comparison, percentile of each measure.</figcaption>
+            </figure>
 
-            <div class="panel glass">
-              <p class="panel-title"><span>Top 6 matches</span><span>tap to re-map</span></p>
+            <section class="candidates">
+              <p class="section-label">Other candidates considered <span class="hand">(tap one to trace it)</span></p>
               <div id="runners" class="runners"></div>
-            </div>
+            </section>
           </div>
         </div>
       </section>
-    </main>
 
-    <div id="toast" class="toast" role="alert" hidden></div>
+      <footer class="colophon">
+        For amusement only. Photographs never leave this device. Species data from
+        <a href="https://pokeapi.co" target="_blank" rel="noopener">PokéAPI</a>. Pokémon © Nintendo / Game Freak / The Pokémon Company.
+      </footer>
+    </article>
 
-    <footer class="footer">
-      Just for fun · Your photo never leaves this device · Data from
-      <a href="https://pokeapi.co" target="_blank" rel="noopener">PokéAPI</a> · Pokémon © Nintendo / Game Freak / The Pokémon Company
-    </footer>
+    <div id="toast" class="sticky toast" role="alert" hidden></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

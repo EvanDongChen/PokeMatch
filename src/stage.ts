@@ -1,9 +1,9 @@
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
-
-type Connection = (typeof FaceLandmarker.FACE_LANDMARKS_TESSELATION)[number];
 import type { FaceAnalysis } from './face.ts';
 import { OUTLINE_RAYS, type Point, type Silhouette } from './silhouette.ts';
 import type { TraitKey } from './traits.ts';
+
+type Connection = (typeof FaceLandmarker.FACE_LANDMARKS_TESSELATION)[number];
 
 // ------------------------------------------------------------------ landmarks
 
@@ -21,13 +21,19 @@ const LIPS = uniq(FaceLandmarker.FACE_LANDMARKS_LIPS);
 const TESSELATION = FaceLandmarker.FACE_LANDMARKS_TESSELATION;
 const CONTOURS = FaceLandmarker.FACE_LANDMARKS_CONTOURS;
 
-const COLORS = {
-  oval: '#ffffff',
-  eyes: '#5ee7ff',
-  brows: '#ffcb05',
-  lips: '#ff5c8a',
-  mesh: '#9aa4ff',
-};
+/** Ink colours, matching the page's CSS tokens. */
+const INK = '#2b2622';
+const RED = '#b8322a';
+const BLUE = '#2a4aa0';
+const BROWN = '#6b4f35';
+const GRAPHITE = '#7d7266';
+const PHOTO_WHITE = '#fbf8f1';
+const PLATE = '#efe6d2';
+
+const COLORS = { oval: INK, eyes: BLUE, brows: BROWN, lips: RED, mesh: GRAPHITE };
+
+const HAND = '"Kalam", "Comic Sans MS", cursive';
+const TYPED = '"Courier Prime", "Courier New", monospace';
 
 /** Landmarks that represent each trait, used for the labelled links. */
 const TRAIT_POINTS: Record<TraitKey, number[]> = {
@@ -47,7 +53,7 @@ const TRAIT_POINTS: Record<TraitKey, number[]> = {
 
 /** Milliseconds on the stage clock. */
 const T = {
-  photoIn: 350,
+  photoIn: 400,
   scanStart: 250,
   scanEnd: 1900,
   contoursEnd: 2400,
@@ -57,8 +63,9 @@ const T = {
   flight: 1150,
   morphSpread: 800,
   revealStart: 6750,
-  linksStart: 7150,
-  end: 8100,
+  stamp: 7250,
+  linksStart: 7400,
+  end: 8400,
 };
 
 export type Phase = 'scan' | 'search' | 'morph' | 'reveal' | 'done';
@@ -67,8 +74,11 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const progress = (t: number, a: number, b: number) => clamp01((t - a) / (b - a));
 const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
 const easeOut = (x: number) => 1 - (1 - x) ** 3;
-const easeOutBack = (x: number) => 1 + 2.4 * (x - 1) ** 3 + 1.4 * (x - 1) ** 2;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** Small tilts so the photo and plate look placed by hand. */
+const FACE_TILT = -0.028;
+const MON_TILT = 0.018;
 
 interface Box {
   x: number;
@@ -98,12 +108,49 @@ export interface PlayOptions {
   /** Pokémon flashed while "searching", in any order. */
   candidates: Promise<Silhouette>[];
   winner: Promise<Silhouette>;
+  /** e.g. "No. 0134 Vaporeon" */
   winnerLabel: string;
-  accent: string;
   links: { key: TraitKey; label: string }[];
   /** 'full' runs the whole sequence; 'morph' only re-maps to a new Pokémon. */
   mode: 'full' | 'morph';
   onPhase?: (phase: Phase) => void;
+}
+
+function rotateAbout(p: Point, c: Point, angle: number): Point {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = p.x - c.x;
+  const dy = p.y - c.y;
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+}
+
+/** A rubber stamp with ink gaps, rendered once and reused. */
+function makeStamp(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 300;
+  c.height = 104;
+  const ctx = c.getContext('2d')!;
+  ctx.strokeStyle = RED;
+  ctx.fillStyle = RED;
+  ctx.lineWidth = 5;
+  ctx.strokeRect(6, 6, 288, 92);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(15, 15, 270, 74);
+  ctx.font = `700 46px ${TYPED}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('IDENTIFIED', 150, 55);
+  // Knock out speckles so it reads as ink, not vector.
+  ctx.globalCompositeOperation = 'destination-out';
+  let seed = 42;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 260; i++) {
+    ctx.globalAlpha = 0.3 + rand() * 0.7;
+    ctx.beginPath();
+    ctx.arc(rand() * 300, rand() * 104, rand() * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return c;
 }
 
 export class Stage {
@@ -117,7 +164,6 @@ export class Stage {
   private links: Link[] = [];
   private winner: Silhouette | null = null;
   private winnerLabel = '';
-  private accent = '#ffcb05';
   private shown: Silhouette[] = [];
   private schedule: { at: number; sil: Silhouette }[] = [];
   private mode: 'full' | 'morph' = 'full';
@@ -127,11 +173,19 @@ export class Stage {
   private phase: Phase = 'done';
   private onPhase?: (phase: Phase) => void;
   private resolveDone: (() => void) | null = null;
+  private stamp = makeStamp();
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
+    // Redraw once the handwriting and typewriter fonts arrive.
+    document.fonts.ready.then(() => this.phase === 'done' && this.draw(this.clock));
+  }
+
+  /** Square crop of the photo around the face, in photo pixels. */
+  get faceCrop() {
+    return this.crop;
   }
 
   private resize() {
@@ -143,11 +197,6 @@ export class Stage {
     this.canvas.height = Math.round(rect.height * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (this.phase === 'done' && this.photo) this.draw(this.clock);
-  }
-
-  /** Square crop of the photo around the face, in photo pixels. */
-  get faceCrop() {
-    return this.crop;
   }
 
   /** Sets the analysed photo; landmark coordinates are in photo pixels. */
@@ -173,12 +222,11 @@ export class Stage {
     }));
   }
 
-  /** Plays the sequence; resolves when the reveal has finished. */
+  /** Plays the sequence; resolves when it has finished. */
   play(opts: PlayOptions): Promise<void> {
     cancelAnimationFrame(this.frame);
     this.resolveDone?.();
     this.mode = opts.mode;
-    this.accent = opts.accent;
     this.winnerLabel = opts.winnerLabel;
     this.onPhase = opts.onPhase;
     this.winner = null;
@@ -230,11 +278,11 @@ export class Stage {
 
     this.draw(t);
 
-    if (this.phase === 'done' && this.resolveDone) {
-      this.resolveDone();
+    if (this.phase === 'done') {
+      this.resolveDone?.();
       this.resolveDone = null;
+      return; // Static from here; resize() redraws.
     }
-    // Keep animating gently after the reveal (pulses along the links).
     this.frame = requestAnimationFrame(this.tick);
   };
 
@@ -261,7 +309,6 @@ export class Stage {
     const browSet = new Set(BROWS);
     const lipSet = new Set(LIPS);
 
-    // Bounding box and centre of the face oval in crop space.
     const ovalPts = OVAL.map((i) => pts[i]);
     const minX = Math.min(...ovalPts.map((p) => p.x));
     const maxX = Math.max(...ovalPts.map((p) => p.x));
@@ -297,11 +344,10 @@ export class Stage {
       // Place inner features at the same relative spot in the Pokémon's body.
       const u = (p.x - minX) / (maxX - minX);
       const v = (p.y - minY) / (maxY - minY);
-      const target = {
+      return nearestInterior({
         x: box.x + box.w * lerp(0.12, 0.88, u) + (rand() - 0.5) * 0.02,
         y: box.y + box.h * lerp(0.1, 0.9, v) + (rand() - 0.5) * 0.02,
-      };
-      return nearestInterior(target);
+      });
     });
 
     this.particles = pts.map((src, index) => {
@@ -314,7 +360,6 @@ export class Stage {
             : lipSet.has(index)
               ? COLORS.lips
               : COLORS.mesh;
-      const featured = color !== COLORS.mesh;
       return {
         index,
         color,
@@ -323,7 +368,7 @@ export class Stage {
         // A wave that leaves from the side nearest the Pokémon.
         delay: (1 - src.x) * T.morphSpread * 0.6 + rand() * T.morphSpread * 0.4,
         arc: (rand() - 0.5) * 0.9,
-        size: featured ? 1.9 : 1.3,
+        size: color === COLORS.mesh ? 1.1 : 1.6,
       };
     });
 
@@ -339,7 +384,11 @@ export class Stage {
     }
     this.links = [...merged].map(([set, labels]) => {
       const idx = set.filter((i) => i < pts.length);
-      return { label: labels.join(' + '), src: centroid(idx.map((i) => pts[i])), dst: centroid(idx.map((i) => dst[i])) };
+      return {
+        label: labels.join(' & ').toLowerCase(),
+        src: centroid(idx.map((i) => pts[i])),
+        dst: centroid(idx.map((i) => dst[i])),
+      };
     });
   }
 
@@ -349,21 +398,41 @@ export class Stage {
     const w = this.width;
     const h = this.height;
     if (w >= 640) {
-      const s = Math.min(h * 0.8, w * 0.36);
+      const s = Math.min(h * 0.66, w * 0.33);
       const gap = (w - 2 * s) / 3.2;
-      return { face: { x: gap, y: (h - s) / 2 - 8, s }, mon: { x: w - gap - s, y: (h - s) / 2 - 8, s }, wide: true };
+      const y = (h - s) / 2 - 22;
+      return { face: { x: gap, y, s }, mon: { x: w - gap - s, y, s }, wide: true };
     }
-    const s = Math.min(w * 0.64, h * 0.36);
-    return { face: { x: (w - s) / 2, y: 28, s }, mon: { x: (w - s) / 2, y: h - 44 - s, s }, wide: false };
+    const s = Math.min(w * 0.6, h * 0.31);
+    return { face: { x: (w - s) / 2, y: 30, s }, mon: { x: (w - s) / 2, y: h - 70 - s, s }, wide: false };
+  }
+
+  private center(b: Box): Point {
+    return { x: b.x + b.s / 2, y: b.y + b.s / 2 };
   }
 
   private toFace(b: Box, p: Point) {
-    return { x: b.x + p.x * b.s, y: b.y + p.y * b.s };
+    return rotateAbout({ x: b.x + p.x * b.s, y: b.y + p.y * b.s }, this.center(b), FACE_TILT);
   }
 
   private toMon(b: Box, p: Point) {
-    const pad = b.s * 0.08;
-    return { x: b.x + pad + p.x * (b.s - 2 * pad), y: b.y + pad + p.y * (b.s - 2 * pad) };
+    const pad = b.s * 0.07;
+    return rotateAbout(
+      { x: b.x + pad + p.x * (b.s - 2 * pad), y: b.y + pad + p.y * (b.s - 2 * pad) },
+      this.center(b),
+      MON_TILT,
+    );
+  }
+
+  /** Runs `fn` in a frame rotated about the box centre. */
+  private tilted(b: Box, angle: number, fn: () => void) {
+    const c = this.center(b);
+    this.ctx.save();
+    this.ctx.translate(c.x, c.y);
+    this.ctx.rotate(angle);
+    this.ctx.translate(-c.x, -c.y);
+    fn();
+    this.ctx.restore();
   }
 
   private particlePos(p: Particle, t: number, face: Box, mon: Box, wide: boolean) {
@@ -372,7 +441,6 @@ export class Stage {
     if (k <= 0 || !this.winner) return { ...start, k: 0 };
     const end = this.toMon(mon, p.dst);
     const e = easeInOut(k);
-    // Quadratic bezier with a sideways bulge so paths fan out.
     const mx = (start.x + end.x) / 2;
     const my = (start.y + end.y) / 2;
     const bulge = (wide ? Math.abs(end.x - start.x) : Math.abs(end.y - start.y)) * p.arc;
@@ -382,48 +450,88 @@ export class Stage {
     return { x, y, k };
   }
 
-  private roundRect(b: Box, r = 22) {
-    const ctx = this.ctx;
-    ctx.beginPath();
-    ctx.roundRect(b.x, b.y, b.s, b.s, r);
-  }
-
-  private brackets(b: Box, color: string, alpha: number) {
-    const ctx = this.ctx;
-    const len = b.s * 0.09;
-    const o = 8;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    const corners: [number, number, number, number][] = [
-      [b.x - o, b.y - o, 1, 1],
-      [b.x + b.s + o, b.y - o, -1, 1],
-      [b.x - o, b.y + b.s + o, 1, -1],
-      [b.x + b.s + o, b.y + b.s + o, -1, -1],
-    ];
-    for (const [x, y, dx, dy] of corners) {
-      ctx.beginPath();
-      ctx.moveTo(x, y + dy * len);
-      ctx.lineTo(x, y);
-      ctx.lineTo(x + dx * len, y);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  private label(text: string, x: number, y: number, color: string, alpha = 1, align: CanvasTextAlign = 'center') {
+  private text(text: string, x: number, y: number, font: string, color: string, alpha = 1, align: CanvasTextAlign = 'center') {
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = '600 11px "JetBrains Mono", ui-monospace, monospace';
-    ctx.letterSpacing = '2px';
+    ctx.font = font;
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
     ctx.restore();
+  }
+
+  private drawPolaroid(face: Box, photoAlpha: number) {
+    const ctx = this.ctx;
+    const pad = face.s * 0.045;
+    const bottom = face.s * 0.15;
+    this.tilted(face, FACE_TILT, () => {
+      // Frame and its shadow on the page.
+      ctx.save();
+      ctx.shadowColor = 'rgba(60,40,20,0.22)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 5;
+      ctx.fillStyle = PHOTO_WHITE;
+      ctx.fillRect(face.x - pad, face.y - pad, face.s + 2 * pad, face.s + pad + bottom);
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = photoAlpha;
+      ctx.filter = 'sepia(0.22) saturate(0.85) contrast(1.02)';
+      ctx.drawImage(this.photo!, this.crop.x, this.crop.y, this.crop.s, this.crop.s, face.x, face.y, face.s, face.s);
+      ctx.restore();
+      if (photoAlpha < 1) {
+        ctx.fillStyle = `rgba(251,248,241,${(1 - photoAlpha) * 0.9})`;
+        ctx.fillRect(face.x, face.y, face.s, face.s);
+      }
+
+      this.text('subject', face.x + face.s / 2, face.y + face.s + bottom * 0.55, `400 ${Math.max(15, face.s * 0.06)}px ${HAND}`, BLUE, 0.9);
+
+      // Masking tape across the top edge.
+      const c = this.center(face);
+      ctx.save();
+      ctx.translate(c.x, face.y - pad);
+      ctx.rotate(0.07);
+      ctx.fillStyle = 'rgba(226,212,170,0.82)';
+      ctx.fillRect(-face.s * 0.13, -face.s * 0.035, face.s * 0.26, face.s * 0.07);
+      ctx.restore();
+    });
+  }
+
+  private drawPlate(mon: Box) {
+    const ctx = this.ctx;
+    const pad = mon.s * 0.02;
+    this.tilted(mon, MON_TILT, () => {
+      ctx.save();
+      ctx.shadowColor = 'rgba(60,40,20,0.15)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetY = 3;
+      ctx.fillStyle = PLATE;
+      ctx.fillRect(mon.x - pad, mon.y - pad, mon.s + 2 * pad, mon.s + 2 * pad);
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(43,38,34,0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(mon.x + mon.s * 0.03, mon.y + mon.s * 0.03, mon.s * 0.94, mon.s * 0.94);
+
+      // Photo-mount corners
+      const k = mon.s * 0.09;
+      ctx.fillStyle = INK;
+      const corners: [number, number, number, number][] = [
+        [mon.x - pad, mon.y - pad, 1, 1],
+        [mon.x + mon.s + pad, mon.y - pad, -1, 1],
+        [mon.x - pad, mon.y + mon.s + pad, 1, -1],
+        [mon.x + mon.s + pad, mon.y + mon.s + pad, -1, -1],
+      ];
+      for (const [x, y, dx, dy] of corners) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + dx * k, y);
+        ctx.lineTo(x, y + dy * k);
+        ctx.closePath();
+        ctx.fill();
+      }
+    });
   }
 
   private draw(t: number) {
@@ -436,65 +544,40 @@ export class Stage {
     const reveal = progress(t, T.revealStart, T.revealStart + 700);
     const scanned = this.mode === 'morph' ? 1 : progress(t, T.scanStart, T.scanEnd);
 
-    // Panels
-    for (const b of [face, mon]) {
-      this.roundRect(b);
-      ctx.fillStyle = 'rgba(255,255,255,0.035)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.09)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-    this.brackets(face, '#5ee7ff', 0.8);
-    this.brackets(mon, this.accent, 0.8);
+    // The photo fades a little while its points are lifted off, then returns.
+    const photoAlpha = (this.mode === 'morph' ? 1 : easeOut(progress(t, 0, T.photoIn))) * (1 - 0.6 * morph * (1 - 0.75 * reveal));
+    this.drawPolaroid(face, photoAlpha);
+    this.drawPlate(mon);
 
-    // Photo
-    // The photo dims while its points fly away, then mostly recovers.
-    const photoAlpha =
-      (this.mode === 'morph' ? 1 : easeOut(progress(t, 0, T.photoIn))) * (1 - 0.55 * morph * (1 - 0.6 * reveal));
-    ctx.save();
-    this.roundRect(face);
-    ctx.clip();
-    ctx.globalAlpha = photoAlpha;
-    ctx.drawImage(this.photo, this.crop.x, this.crop.y, this.crop.s, this.crop.s, face.x, face.y, face.s, face.s);
-    const shade = ctx.createLinearGradient(0, face.y, 0, face.y + face.s);
-    shade.addColorStop(0, 'rgba(7,7,16,0.15)');
-    shade.addColorStop(1, 'rgba(7,7,16,0.55)');
-    ctx.fillStyle = shade;
-    ctx.fillRect(face.x, face.y, face.s, face.s);
-    ctx.restore();
-
-    // Scan line
+    // Pencil guide line sweeping down the photo.
     if (this.mode === 'full' && t > T.scanStart && t < T.scanEnd + 200) {
-      const y = face.y + face.s * easeInOut(scanned);
       const alpha = 1 - progress(t, T.scanEnd, T.scanEnd + 200);
+      const y = easeInOut(scanned);
+      const a = this.toFace(face, { x: -0.04, y });
+      const b = this.toFace(face, { x: 1.04, y });
       ctx.save();
-      this.roundRect(face);
-      ctx.clip();
-      const glow = ctx.createLinearGradient(0, y - 70, 0, y);
-      glow.addColorStop(0, 'rgba(94,231,255,0)');
-      glow.addColorStop(1, `rgba(94,231,255,${0.28 * alpha})`);
-      ctx.fillStyle = glow;
-      ctx.fillRect(face.x, y - 70, face.s, 70);
-      ctx.fillStyle = `rgba(190,248,255,${alpha})`;
-      ctx.shadowColor = '#5ee7ff';
-      ctx.shadowBlur = 16;
-      ctx.fillRect(face.x, y - 1, face.s, 2);
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.strokeStyle = RED;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
       ctx.restore();
     }
 
-    // Positions of every landmark (on the face, or in flight).
     const revealedAt = (p: Point) => scanned >= clamp01(p.y);
     const pos = this.particles.length
       ? this.particles.map((p) => this.particlePos(p, t, face, mon, wide))
       : this.points.map((p) => ({ ...this.toFace(face, p), k: 0 }));
 
-    // Mesh: faint before the morph, stretching across while particles fly.
-    const meshAlpha = (morph > 0 ? 0.13 : 0.16) * (1 - reveal);
+    // Graphite mesh
+    const meshAlpha = (morph > 0 ? 0.16 : 0.2) * (1 - reveal);
     if (meshAlpha > 0.01) {
       ctx.save();
-      ctx.strokeStyle = `rgba(154,164,255,${meshAlpha})`;
-      ctx.lineWidth = 0.6;
+      ctx.strokeStyle = `rgba(80,70,60,${meshAlpha})`;
+      ctx.lineWidth = 0.55;
       ctx.beginPath();
       for (const { start, end } of TESSELATION) {
         if (!revealedAt(this.points[start]) || !revealedAt(this.points[end])) continue;
@@ -505,14 +588,13 @@ export class Stage {
       ctx.restore();
     }
 
-    // Glowing feature contours once the scan completes.
-    const contourAlpha =
-      (this.mode === 'full' ? easeOut(progress(t, T.scanEnd - 100, T.contoursEnd)) : 1) * (1 - morph);
+    // Inked feature contours once the plotting is done.
+    const contourAlpha = (this.mode === 'full' ? easeOut(progress(t, T.scanEnd - 100, T.contoursEnd)) : 1) * (1 - morph);
     if (contourAlpha > 0.01) {
       ctx.save();
-      ctx.globalAlpha = contourAlpha;
-      ctx.lineWidth = 1.6;
-      ctx.shadowBlur = 10;
+      ctx.globalAlpha = contourAlpha * 0.9;
+      ctx.lineWidth = 1.4;
+      ctx.lineJoin = 'round';
       for (const [set, color] of [
         [OVAL, COLORS.oval],
         [EYES, COLORS.eyes],
@@ -521,7 +603,6 @@ export class Stage {
       ] as const) {
         const members = new Set<number>(set);
         ctx.strokeStyle = color;
-        ctx.shadowColor = color;
         ctx.beginPath();
         for (const { start, end } of CONTOURS) {
           if (!members.has(start) || !members.has(end)) continue;
@@ -533,75 +614,56 @@ export class Stage {
       ctx.restore();
     }
 
-    // Pokémon panel: search flicker, then silhouette, then reveal.
-    this.drawMon(t, mon, reveal);
+    this.drawSpecimen(t, mon, reveal);
 
-    // Particles
-    const particleFade = 1 - progress(t, T.revealStart + 150, T.revealStart + 900);
-    if (particleFade > 0) {
+    // Ink dots, with graphite trails while in flight.
+    const dotFade = 1 - progress(t, T.revealStart + 100, T.revealStart + 800);
+    if (dotFade > 0) {
       ctx.save();
       const list = this.particles.length
         ? this.particles
-        : this.points.map((src, index) => ({ index, src, color: COLORS.mesh, size: 1.3 }) as Particle);
+        : this.points.map((src, index) => ({ index, src, color: COLORS.mesh, size: 1.1 }) as Particle);
       for (const p of list) {
         const src = this.points[p.index];
         if (!revealedAt(src)) continue;
         const q = pos[p.index];
-        // Pop in just after the scan line passes.
-        const pop = this.mode === 'full' ? progress(scanned, src.y, src.y + 0.06) : 1;
+        const plotted = this.mode === 'full' ? progress(scanned, src.y, src.y + 0.04) : 1;
         const inFlight = q.k > 0 && q.k < 1;
-        const r = p.size * (pop < 1 ? 1 + (1 - pop) * 1.8 : 1) * (inFlight ? 1.25 : 1);
-        ctx.globalAlpha = particleFade * Math.min(1, pop * 1.4) * (q.k >= 1 ? 0.85 : 1);
-        ctx.fillStyle = p.color;
         if (inFlight) {
-          // Comet trail pointing back along the path.
-          const back = this.particlePos(p, t - 70, face, mon, wide);
+          const back = this.particlePos(p, t - 90, face, mon, wide);
+          ctx.globalAlpha = dotFade * 0.35;
           ctx.strokeStyle = p.color;
-          ctx.lineWidth = r * 1.1;
-          ctx.globalAlpha *= 0.5;
+          ctx.lineWidth = 0.8;
           ctx.beginPath();
           ctx.moveTo(back.x, back.y);
           ctx.lineTo(q.x, q.y);
           ctx.stroke();
-          ctx.globalAlpha /= 0.5;
         }
+        ctx.globalAlpha = dotFade * (q.k >= 1 ? 0.75 : 0.95);
+        ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
+        ctx.arc(q.x, q.y, p.size * plotted, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
     }
 
-    // Labelled links between matching features.
-    this.drawLinks(t, face, mon);
+    this.drawLinks(t, face, mon, wide);
+    this.drawStamp(t, mon);
 
-    // Captions
-    const capY = face.y + face.s + 26;
-    this.label(
-      this.mode === 'full' && scanned < 1 ? `SCANNING · ${Math.round(scanned * 478)} PTS` : 'SUBJECT · 478 LANDMARKS',
-      face.x + face.s / 2,
-      capY,
-      'rgba(190,248,255,0.85)',
-    );
-    let monCaption = '';
-    if (t >= T.revealStart) monCaption = this.winnerLabel;
-    else if (t >= T.morphStart) monCaption = 'MAPPING FEATURES…';
-    else if (t >= T.searchStart) {
-      const current = this.currentCandidate(t);
-      monCaption = current ? `SEARCHING · ${this.searchCount(t)} / 1025` : 'SEARCHING…';
-    } else monCaption = 'AWAITING SCAN';
-    this.label(monCaption, mon.x + mon.s / 2, mon.y + mon.s + 26, this.accent, t >= T.searchStart ? 1 : 0.5);
+    // Figure captions
+    const typed = `400 12px ${TYPED}`;
+    const faceCap =
+      this.mode === 'full' && scanned < 1
+        ? `FIG. 1a  plotting… ${Math.round(scanned * 478)}/478`
+        : 'FIG. 1a  subject, 478 landmarks';
+    this.text(faceCap, face.x + face.s / 2, face.y + face.s * 1.15 + 24, typed, INK, 0.75);
 
-    // Flash on reveal
-    if (t >= T.revealStart && t < T.revealStart + 600) {
-      const f = 1 - progress(t, T.revealStart, T.revealStart + 600);
-      const c = { x: mon.x + mon.s / 2, y: mon.y + mon.s / 2 };
-      const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, mon.s * 0.9);
-      g.addColorStop(0, `rgba(255,255,255,${0.85 * f})`);
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(mon.x - mon.s, mon.y - mon.s, mon.s * 3, mon.s * 3);
-    }
+    let monCap = 'FIG. 1b  awaiting comparison';
+    if (t >= T.revealStart) monCap = `FIG. 1b  ${this.winnerLabel}`;
+    else if (t >= T.morphStart) monCap = 'FIG. 1b  tracing features…';
+    else if (t >= T.searchStart) monCap = `FIG. 1b  consulting index… ${this.searchCount(t)}/1025`;
+    this.text(monCap, mon.x + mon.s / 2, mon.y + mon.s + 30, typed, INK, 0.75);
   }
 
   private currentCandidate(t: number): Silhouette | null {
@@ -615,34 +677,15 @@ export class Stage {
     return Math.round(1025 * easeOut(progress(t, T.searchStart, T.searchEnd - 450)));
   }
 
-  private drawMon(t: number, mon: Box, reveal: number) {
+  private drawSpecimen(t: number, mon: Box, reveal: number) {
     const ctx = this.ctx;
-    const pad = mon.s * 0.08;
+    const pad = mon.s * 0.07;
     const art = { x: mon.x + pad, y: mon.y + pad, s: mon.s - 2 * pad };
 
-    // Coloured glow behind the panel
-    const glowStrength = t >= T.searchStart ? 0.35 + 0.4 * reveal : 0.12;
-    const g = ctx.createRadialGradient(
-      mon.x + mon.s / 2, mon.y + mon.s / 2, 0,
-      mon.x + mon.s / 2, mon.y + mon.s / 2, mon.s * 0.6,
-    );
-    g.addColorStop(0, this.hexAlpha(this.accent, glowStrength));
-    g.addColorStop(1, this.hexAlpha(this.accent, 0));
-    ctx.save();
-    this.roundRect(mon);
-    ctx.clip();
-    ctx.fillStyle = g;
-    ctx.fillRect(mon.x, mon.y, mon.s, mon.s);
-    ctx.restore();
-
-    if (t < T.searchStart) {
-      ctx.save();
-      ctx.font = `700 ${mon.s * 0.4}px "Space Grotesk", system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      ctx.fillText('?', mon.x + mon.s / 2, mon.y + mon.s / 2);
-      ctx.restore();
+    if (t < T.searchStart && this.mode === 'full') {
+      this.tilted(mon, MON_TILT, () =>
+        this.text('?', mon.x + mon.s / 2, mon.y + mon.s / 2, `400 ${mon.s * 0.42}px ${HAND}`, GRAPHITE, 0.35),
+      );
       return;
     }
 
@@ -650,207 +693,171 @@ export class Stage {
     const current = showWinner ? this.winner : this.currentCandidate(t);
     if (!current) return;
 
-    // Shadow form, with an outline that traces itself as the oval lands.
-    if (reveal < 1) {
-      ctx.save();
-      ctx.globalAlpha = 1 - reveal;
-      ctx.shadowColor = this.accent;
-      ctx.shadowBlur = 24;
-      ctx.drawImage(current.shadow, art.x, art.y, art.s, art.s);
-      ctx.restore();
-    }
-
-    if (current === this.winner && t >= T.morphStart) {
-      const trace = easeInOut(progress(t, T.morphStart + 700, T.revealStart));
-      const pts = current.outline.map((p) => ({ x: art.x + p.x * art.s, y: art.y + p.y * art.s }));
-      ctx.save();
-      ctx.strokeStyle = this.accent;
-      ctx.shadowColor = this.accent;
-      ctx.shadowBlur = 12;
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.9 * (1 - reveal * 0.75);
-      const count = Math.floor(pts.length * trace);
-      if (count > 1) {
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < count; i++) ctx.lineTo(pts[i].x, pts[i].y);
-        if (trace >= 1) ctx.closePath();
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    if (reveal > 0 && this.winner) {
-      const scale = lerp(0.82, 1, easeOutBack(reveal));
-      const s = art.s * scale;
-      ctx.save();
-      ctx.globalAlpha = reveal;
-      ctx.shadowColor = 'rgba(0,0,0,0.45)';
-      ctx.shadowBlur = 24;
-      ctx.shadowOffsetY = 10;
-      ctx.drawImage(this.winner.image, art.x + (art.s - s) / 2, art.y + (art.s - s) / 2, s, s);
-      ctx.restore();
-
-      // Ring burst
-      const ring = progress(t, T.revealStart, T.revealStart + 900);
-      if (ring < 1) {
+    this.tilted(mon, MON_TILT, () => {
+      // Silhouette printed in ink, fading out as the colour print comes in.
+      if (reveal < 1) {
         ctx.save();
-        ctx.strokeStyle = this.accent;
-        ctx.globalAlpha = 1 - ring;
-        ctx.lineWidth = 3 * (1 - ring) + 0.5;
-        ctx.beginPath();
-        ctx.arc(mon.x + mon.s / 2, mon.y + mon.s / 2, mon.s * (0.3 + 0.55 * easeOut(ring)), 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.globalAlpha = (1 - reveal) * (current === this.winner ? 0.88 : 0.8);
+        ctx.drawImage(current.shadow, art.x, art.y, art.s, art.s);
         ctx.restore();
       }
-    }
+
+      // Red pen traces the outline as the face oval lands on it.
+      if (current === this.winner && t >= T.morphStart) {
+        const trace = easeInOut(progress(t, T.morphStart + 700, T.revealStart));
+        const pts = current.outline.map((p) => ({ x: art.x + p.x * art.s, y: art.y + p.y * art.s }));
+        const count = Math.floor(pts.length * trace);
+        if (count > 1) {
+          ctx.save();
+          ctx.strokeStyle = RED;
+          ctx.lineWidth = 1.8;
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = 0.9 * (1 - reveal);
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < count; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          if (trace >= 1) ctx.closePath();
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // Colour print, multiplied into the paper.
+      if (reveal > 0 && this.winner) {
+        ctx.save();
+        ctx.globalAlpha = easeOut(reveal);
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.drawImage(this.winner.image, art.x, art.y, art.s, art.s);
+        ctx.restore();
+      }
+    });
   }
 
-  private drawLinks(t: number, face: Box, mon: Box) {
+  private drawStamp(t: number, mon: Box) {
+    if (!this.winner || t < T.stamp) return;
+    const k = progress(t, T.stamp, T.stamp + 220);
+    const ctx = this.ctx;
+    const w = Math.min(150, mon.s * 0.5);
+    const h = (w * this.stamp.height) / this.stamp.width;
+    const scale = lerp(1.5, 1, easeOut(k));
+    ctx.save();
+    ctx.translate(mon.x + mon.s * 0.8, mon.y + mon.s * 0.88);
+    ctx.rotate(-0.16);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = 0.85 * k;
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(this.stamp, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  }
+
+  private drawLinks(t: number, face: Box, mon: Box, wide: boolean) {
     if (!this.winner || t < T.linksStart) return;
     const ctx = this.ctx;
-    const grow = easeInOut(progress(t, T.linksStart, T.linksStart + 800));
-    const { wide } = this.layout();
+    const grow = easeInOut(progress(t, T.linksStart, T.linksStart + 700));
+    const font = `400 ${wide ? 18 : 16}px ${HAND}`;
 
-    const curves = this.links.map((link) => {
+    const curves = this.links.map((link, li) => {
       const a = this.toFace(face, link.src);
       const b = this.toMon(mon, link.dst);
-      const ctrl1 = wide ? { x: lerp(a.x, b.x, 0.45), y: a.y } : { x: a.x, y: lerp(a.y, b.y, 0.45) };
-      const ctrl2 = wide ? { x: lerp(a.x, b.x, 0.55), y: b.y } : { x: b.x, y: lerp(a.y, b.y, 0.55) };
-      const at = (u: number) => ({
-        x: (1 - u) ** 3 * a.x + 3 * (1 - u) ** 2 * u * ctrl1.x + 3 * (1 - u) * u * u * ctrl2.x + u ** 3 * b.x,
-        y: (1 - u) ** 3 * a.y + 3 * (1 - u) ** 2 * u * ctrl1.y + 3 * (1 - u) * u * u * ctrl2.y + u ** 3 * b.y,
-      });
-      return { a, b, at, mid: at(0.5) };
+      const c1 = wide ? { x: lerp(a.x, b.x, 0.45), y: a.y } : { x: a.x, y: lerp(a.y, b.y, 0.45) };
+      const c2 = wide ? { x: lerp(a.x, b.x, 0.55), y: b.y } : { x: b.x, y: lerp(a.y, b.y, 0.55) };
+      // A cubic with a slight hand tremor.
+      const at = (u: number) => {
+        const x = (1 - u) ** 3 * a.x + 3 * (1 - u) ** 2 * u * c1.x + 3 * (1 - u) * u * u * c2.x + u ** 3 * b.x;
+        const y = (1 - u) ** 3 * a.y + 3 * (1 - u) ** 2 * u * c1.y + 3 * (1 - u) * u * u * c2.y + u ** 3 * b.y;
+        const wobble = Math.sin(u * 19 + li * 2.1) * 0.9 * Math.sin(u * Math.PI);
+        return { x: x + (wide ? 0 : wobble), y: y + (wide ? wobble : 0) };
+      };
+      return { a, b, at };
     });
 
-    // Push label pills apart so they never overlap.
-    const axis = wide ? 'y' : 'x';
-    const minGap = wide ? 28 : 0;
-    const order = curves.map((_, i) => i).sort((i, j) => curves[i].mid[axis] - curves[j].mid[axis]);
-    const labelPos = curves.map((c) => ({ ...c.mid }));
+    // Label positions: in the gap, pushed apart so they never overlap.
+    ctx.save();
+    ctx.font = font;
+    const widths = this.links.map((l) => ctx.measureText(l.label).width + 12);
+    ctx.restore();
+    const labelPos: Point[] = curves.map((c) => c.at(0.5));
     if (wide) {
+      const order = labelPos.map((_, i) => i).sort((i, j) => labelPos[i].y - labelPos[j].y);
       for (let k = 1; k < order.length; k++) {
         const prev = labelPos[order[k - 1]];
         const cur = labelPos[order[k]];
-        if (cur.y - prev.y < minGap) cur.y = prev.y + minGap;
+        if (cur.y - prev.y < 30) cur.y = prev.y + 30;
       }
     } else {
-      // Stacked layout: flow labels into centred rows across the gap.
-      ctx.save();
-      ctx.font = '600 10.5px "JetBrains Mono", ui-monospace, monospace';
-      ctx.letterSpacing = '1.5px';
-      const widths = this.links.map((l) => ctx.measureText(l.label.toUpperCase()).width + 20);
-      ctx.restore();
-      const maxRow = this.width - 32;
       const rows: number[][] = [[]];
       let rowW = 0;
-      for (const idx of order) {
-        if (rows.at(-1)!.length && rowW + widths[idx] + 8 > maxRow) {
+      this.links.forEach((_, idx) => {
+        if (rows.at(-1)!.length && rowW + widths[idx] + 10 > this.width - 32) {
           rows.push([]);
           rowW = 0;
         }
         rows.at(-1)!.push(idx);
-        rowW += widths[idx] + 8;
-      }
-      const gapTop = face.y + face.s + 42;
-      const gapBottom = mon.y - 14;
-      const startY = (gapTop + gapBottom) / 2 - ((rows.length - 1) * 26) / 2;
+        rowW += widths[idx] + 10;
+      });
+      const gapTop = face.y + face.s * 1.15 + 44;
+      const gapBottom = mon.y - 10;
+      const startY = (gapTop + gapBottom) / 2 - ((rows.length - 1) * 28) / 2;
       rows.forEach((row, r) => {
-        const total = row.reduce((s, idx) => s + widths[idx], 0) + (row.length - 1) * 8;
+        const total = row.reduce((s, idx) => s + widths[idx], 0) + (row.length - 1) * 10;
         let x = this.width / 2 - total / 2;
         for (const idx of row) {
-          labelPos[idx] = { x: x + widths[idx] / 2, y: startY + r * 26 };
-          x += widths[idx] + 8;
+          labelPos[idx] = { x: x + widths[idx] / 2, y: startY + r * 28 };
+          x += widths[idx] + 10;
         }
       });
     }
 
-    // Pills are drawn after every line so lines never cross over them.
-    const pills: (() => void)[] = [];
-
-    curves.forEach(({ a, b, at }, i) => {
-      const link = this.links[i];
-
+    curves.forEach(({ a, b, at }) => {
       ctx.save();
-      const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-      grad.addColorStop(0, '#5ee7ff');
-      grad.addColorStop(1, this.accent);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 1.5;
-      ctx.globalAlpha = 0.85;
-      ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = BLUE;
+      ctx.lineWidth = 1.3;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.9;
       ctx.beginPath();
-      const steps = 40;
-      for (let s = 0; s <= steps * grow; s++) {
+      const steps = 48;
+      const upto = Math.floor(steps * grow);
+      for (let s = 0; s <= upto; s++) {
         const p = at(s / steps);
         if (s === 0) ctx.moveTo(p.x, p.y);
         else ctx.lineTo(p.x, p.y);
       }
       ctx.stroke();
-      ctx.setLineDash([]);
 
-      // End points
-      for (const [p, color, show] of [
-        [a, '#5ee7ff', true],
-        [b, this.accent, grow >= 1],
-      ] as const) {
-        if (!show) continue;
-        ctx.fillStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 10;
+      // Circle the source feature, and an arrowhead at the Pokémon.
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y, 7, 6, 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+      if (grow >= 1) {
+        const p = at(0.96);
+        const ang = Math.atan2(b.y - p.y, b.x - p.x);
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-        ctx.lineWidth = 1.5;
+        ctx.moveTo(b.x - Math.cos(ang - 0.45) * 9, b.y - Math.sin(ang - 0.45) * 9);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineTo(b.x - Math.cos(ang + 0.45) * 9, b.y - Math.sin(ang + 0.45) * 9);
         ctx.stroke();
       }
-
-      // A pulse travelling along the link, forever.
-      if (grow >= 1) {
-        const u = ((t - T.linksStart) / 1800 + i * 0.33) % 1;
-        const p = at(u);
-        ctx.fillStyle = '#fff';
-        ctx.shadowColor = '#fff';
-        ctx.shadowBlur = 12;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Label pill at the midpoint, staggered so they don't overlap.
-      const labelAlpha = progress(t, T.linksStart + 500 + i * 120, T.linksStart + 900 + i * 120);
       ctx.restore();
-      if (labelAlpha > 0) {
-        pills.push(() => {
-          const { x: lx, y: ly } = labelPos[i];
-          ctx.save();
-          ctx.globalAlpha = labelAlpha;
-          ctx.font = '600 10.5px "JetBrains Mono", ui-monospace, monospace';
-          ctx.letterSpacing = '1.5px';
-          const text = link.label.toUpperCase();
-          const w = ctx.measureText(text).width + 20;
-          ctx.fillStyle = 'rgba(12,12,24,0.92)';
-          ctx.strokeStyle = this.hexAlpha(this.accent, 0.6);
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.roundRect(lx - w / 2, ly - 11, w, 22, 11);
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = '#fff';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(text, lx, ly + 0.5);
-          ctx.restore();
-        });
-      }
     });
-    for (const draw of pills) draw();
-  }
 
-  private hexAlpha(hex: string, alpha: number) {
-    const n = parseInt(hex.slice(1), 16);
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+    // Handwritten notes with a highlighter swipe, drawn last so they sit on top.
+    this.links.forEach((link, i) => {
+      const alpha = progress(t, T.linksStart + 400 + i * 150, T.linksStart + 750 + i * 150);
+      if (alpha <= 0) return;
+      const { x, y } = labelPos[i];
+      const w = widths[i];
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(255,214,64,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, y - 7);
+      ctx.lineTo(x + w / 2 + 2, y - 10);
+      ctx.lineTo(x + w / 2, y + 9);
+      ctx.lineTo(x - w / 2 - 2, y + 11);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      this.text(link.label, x, y + 1, font, BLUE, alpha);
+    });
   }
 }

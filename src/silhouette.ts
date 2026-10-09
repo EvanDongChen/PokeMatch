@@ -102,7 +102,7 @@ async function build(id: number): Promise<Silhouette> {
   const sctx = shadow.getContext('2d')!;
   sctx.drawImage(image, 0, 0, 512, 512);
   sctx.globalCompositeOperation = 'source-in';
-  sctx.fillStyle = '#0b0b16';
+  sctx.fillStyle = '#2b2622';
   sctx.fillRect(0, 0, 512, 512);
 
   return {

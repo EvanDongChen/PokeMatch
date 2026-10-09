@@ -9,17 +9,16 @@ import { renderShareCard } from './share.ts';
 const MAX_SIDE = 1024;
 
 const TYPE_COLORS: Record<string, string> = {
-  normal: '#a8a77a', fire: '#ee8130', water: '#6390f0', electric: '#f7d02c', grass: '#7ac74c',
-  ice: '#96d9d6', fighting: '#c22e28', poison: '#a33ea1', ground: '#e2bf65', flying: '#a98ff3',
-  psychic: '#f95587', bug: '#a6b91a', rock: '#b6a136', ghost: '#735797', dragon: '#6f35fc',
-  dark: '#705746', steel: '#b7b7ce', fairy: '#d685ad',
+  normal: '#a8a77a', fire: '#ee8130', water: '#6390f0', electric: '#d6b11a', grass: '#5fa83a',
+  ice: '#5fb8b4', fighting: '#c22e28', poison: '#a33ea1', ground: '#c09a3e', flying: '#8a6fe0',
+  psychic: '#f95587', bug: '#8a9a16', rock: '#a08a2a', ghost: '#735797', dragon: '#6f35fc',
+  dark: '#705746', steel: '#8a8aa6', fairy: '#d06aa0',
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const accentOf = (m: Match) => TYPE_COLORS[m.pokemon.types[0]] ?? '#ffcb05';
 const titleCase = (s: string) => s[0].toUpperCase() + s.slice(1);
-const dexNo = (id: number) => `#${String(id).padStart(4, '0')}`;
+const dexNo = (id: number) => `No. ${String(id).padStart(4, '0')}`;
 
 // -------------------------------------------------------------------- screens
 
@@ -41,38 +40,7 @@ function toast(message: string) {
   toastTimer = window.setTimeout(() => (el.hidden = true), 5000);
 }
 
-// ------------------------------------------------------------- landing visual
-
-const HERO_IDS = [25, 143, 39, 54, 94, 133, 7, 1, 4, 52, 79, 175];
-document.querySelectorAll<HTMLImageElement>('.orbit img').forEach((img, i, all) => {
-  // Offset so no Pokémon sits directly under the caption.
-  const a = ((i + 0.5) / all.length) * Math.PI * 2;
-  img.style.left = `${50 + 44 * Math.sin(a)}%`;
-  img.style.top = `${50 - 44 * Math.cos(a)}%`;
-  img.src = artworkUrl(+img.dataset.id!);
-});
-
-(function cycleHero() {
-  const img = $<HTMLImageElement>('hero-mon');
-  const caption = $('hero-caption');
-  let i = 0;
-  const next = () => {
-    if ($('screen-pick').hidden) return;
-    const id = HERO_IDS[i++ % HERO_IDS.length];
-    img.classList.remove('revealed');
-    caption.textContent = "WHO'S THAT POKÉMON?";
-    img.onload = () => {
-      img.classList.add('shown');
-      setTimeout(() => {
-        img.classList.add('revealed');
-        caption.textContent = `IT'S ${POKEDEX[id - 1].name.toUpperCase()}!`;
-      }, 1300);
-    };
-    img.src = artworkUrl(id);
-  };
-  next();
-  setInterval(next, 3200);
-})();
+document.querySelectorAll<HTMLImageElement>('.specimen img').forEach((img) => (img.src = artworkUrl(+img.dataset.id!)));
 
 // ---------------------------------------------------------------- image input
 
@@ -93,7 +61,7 @@ function toCanvas(source: CanvasImageSource, width: number, height: number, mirr
 async function handleFile(file: File | undefined | null) {
   if (!file) return;
   if (!file.type.startsWith('image/')) {
-    toast('That file isn’t an image. Try a JPG or PNG photo.');
+    toast('That file isn’t a photograph. A JPG or PNG, please.');
     return;
   }
   try {
@@ -148,7 +116,7 @@ function stopCamera() {
 
 $('camera-btn').addEventListener('click', async () => {
   if (!navigator.mediaDevices?.getUserMedia) {
-    toast('Camera isn’t available in this browser. Upload a photo instead.');
+    toast('This browser has no camera access. Choose a photo instead.');
     return;
   }
   try {
@@ -160,7 +128,7 @@ $('camera-btn').addEventListener('click', async () => {
     show('camera');
   } catch (err) {
     console.error(err);
-    toast('Couldn’t open the camera. Check the permission, or upload a photo instead.');
+    toast('Couldn’t open the camera. Check the permission, or choose a photo instead.');
   }
 });
 
@@ -194,8 +162,22 @@ interface Session {
   traits: TraitVector;
   matches: Match[];
   selected: number;
+  observation: string;
+  date: string;
 }
 let session: Session | null = null;
+
+/** Observation numbers count up per browser, just for flavour. */
+function nextObservation(): string {
+  let n = 1 + Math.floor(Math.random() * 40);
+  try {
+    n = Number(localStorage.getItem('pokematch-obs') ?? n) + 1;
+    localStorage.setItem('pokematch-obs', String(n));
+  } catch {
+    // Storage blocked; a random number is fine.
+  }
+  return String(n).padStart(4, '0');
+}
 
 function setStep(phase: Phase) {
   const order: Phase[] = ['scan', 'search', 'morph', 'reveal', 'done'];
@@ -210,14 +192,14 @@ function setStep(phase: Phase) {
 function buildReadout(traits: TraitVector) {
   $('readout-grid').replaceChildren(
     ...TRAITS.map((t, i) => {
-      const cell = document.createElement('div');
-      cell.className = 'meter';
-      cell.style.setProperty('--delay', `${250 + i * 140}ms`);
-      cell.style.setProperty('--value', String(traits[t.key]));
-      cell.innerHTML = `<span class="meter-label"></span><span class="meter-value"></span><span class="meter-bar"><i></i></span>`;
-      cell.querySelector('.meter-label')!.textContent = t.label;
-      cell.querySelector('.meter-value')!.textContent = `${Math.round(traits[t.key] * 100)}`;
-      return cell;
+      const row = document.createElement('div');
+      row.className = 'measure';
+      row.style.setProperty('--delay', `${300 + i * 130}ms`);
+      row.style.setProperty('--value', String(traits[t.key]));
+      row.innerHTML = `<span class="measure-label"></span><span class="measure-scale"></span><span class="measure-value"></span>`;
+      row.querySelector('.measure-label')!.textContent = t.label.toLowerCase();
+      row.querySelector('.measure-value')!.textContent = String(Math.round(traits[t.key] * 100));
+      return row;
     }),
   );
   $('readout').classList.remove('filled');
@@ -228,32 +210,38 @@ async function start(photo: HTMLCanvasElement) {
   show('session');
   $('results').hidden = true;
   $('readout').hidden = false;
-  $('readout-status').textContent = 'loading model…';
+  $('readout-grid').replaceChildren();
+  $('readout-status').textContent = 'loading the measuring kit…';
   setStep('scan');
+
+  const observation = nextObservation();
+  const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  $('obs-no').textContent = observation;
+  $('obs-date').textContent = date;
 
   let face: FaceAnalysis | null;
   try {
     await loadLandmarker();
-    $('readout-status').textContent = 'mapping…';
+    $('readout-status').textContent = 'measuring…';
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
     face = await analyzeFace(photo);
   } catch (err) {
     console.error(err);
     show('pick');
-    toast('The face model failed to load. Check your connection and try again.');
+    toast('The face model wouldn’t load. Check the connection and try again.');
     return;
   }
   if (!face) {
     show('pick');
-    toast('No face found in that photo. Try a clearer, front-facing shot.');
+    toast('I couldn’t find a face in that one. Try a clearer photo, facing forward.');
     return;
   }
 
   const traits = faceTraits(face.measures);
   const matches = rankMatches(traits);
-  session = { photo, face, traits, matches, selected: 0 };
+  session = { photo, face, traits, matches, selected: 0, observation, date };
   buildReadout(traits);
-  $('readout-status').textContent = 'measuring…';
+  $('readout-status').textContent = '';
 
   stage.setFace(photo, face);
   await runStage(matches[0], 'full');
@@ -261,31 +249,27 @@ async function start(photo: HTMLCanvasElement) {
 
 async function runStage(match: Match, mode: 'full' | 'morph') {
   if (!session) return;
-  const accent = accentOf(match);
-  document.documentElement.style.setProperty('--accent', accent);
   const reasons = explainMatch(session.traits, match);
+
   // Silhouettes flashed during the search: random Pokémon, then the runners-up.
   const flicker = new Set<number>();
   if (mode === 'full') {
     while (flicker.size < 10) flicker.add(1 + Math.floor(Math.random() * POKEDEX.length));
-    session.matches.forEach((m) => m !== match && flicker.add(m.pokemon.id));
+    session.matches.forEach((m) => flicker.add(m.pokemon.id));
     flicker.delete(match.pokemon.id);
   }
-  const candidates = [...flicker].map(loadSilhouette);
 
   $('skip-btn').hidden = false;
-  if (mode === 'full') renderResults(0);
+  if (mode === 'full') renderResults(session.selected);
 
   await stage.play({
     mode: reducedMotion ? 'morph' : mode,
-    candidates,
+    candidates: [...flicker].map(loadSilhouette),
     winner: loadSilhouette(match.pokemon.id),
-    winnerLabel: `${dexNo(match.pokemon.id)} · ${match.pokemon.name.toUpperCase()}`,
-    accent,
+    winnerLabel: `${dexNo(match.pokemon.id)} ${match.pokemon.name}`,
     links: reasons.map((r) => ({ key: r.trait.key, label: r.trait.label })),
     onPhase: (phase) => {
       setStep(phase);
-      if (phase === 'search') $('readout-status').textContent = 'complete';
       if (phase === 'reveal' && mode === 'full') revealResults();
     },
   });
@@ -297,38 +281,33 @@ function revealResults() {
   if (!$('results').hidden) return;
   $('readout').hidden = true;
   $('results').hidden = false;
-  animateGauge(session!.matches[session!.selected].similarity);
+  countUp(session!.matches[session!.selected].similarity);
 }
 
 $('skip-btn').addEventListener('click', () => stage.skip());
 
 // -------------------------------------------------------------------- results
 
-function typeChip(type: string) {
+function typeStamp(type: string) {
   const el = document.createElement('span');
   el.className = 'type';
-  el.textContent = titleCase(type);
-  el.style.setProperty('--type', TYPE_COLORS[type] ?? '#888');
+  el.textContent = type;
+  el.style.setProperty('--type', TYPE_COLORS[type] ?? '#777');
   return el;
 }
 
-let gaugeFrame = 0;
-function animateGauge(value: number) {
-  const fill = $('gauge-fill') as unknown as SVGCircleElement;
+let countFrame = 0;
+function countUp(value: number) {
   const label = $('gauge-value');
-  const circumference = 2 * Math.PI * 52;
-  fill.style.strokeDasharray = `${circumference}`;
-  cancelAnimationFrame(gaugeFrame);
+  cancelAnimationFrame(countFrame);
   const startTime = performance.now();
-  const duration = reducedMotion ? 1 : 1100;
+  const duration = reducedMotion ? 1 : 900;
   const step = (now: number) => {
     const k = Math.min(1, (now - startTime) / duration);
-    const e = 1 - (1 - k) ** 3;
-    fill.style.strokeDashoffset = `${circumference * (1 - (value / 100) * e)}`;
-    label.textContent = String(Math.round(value * e));
-    if (k < 1) gaugeFrame = requestAnimationFrame(step);
+    label.textContent = String(Math.round(value * (1 - (1 - k) ** 3)));
+    if (k < 1) countFrame = requestAnimationFrame(step);
   };
-  gaugeFrame = requestAnimationFrame(step);
+  countFrame = requestAnimationFrame(step);
 }
 
 function renderResults(index: number) {
@@ -337,62 +316,55 @@ function renderResults(index: number) {
   const { traits, matches, face } = session;
   const match = matches[index];
   const { pokemon } = match;
-  const accent = accentOf(match);
   const isTop = index === 0;
-  document.documentElement.style.setProperty('--accent', accent);
 
   const notices: string[] = [];
-  if (face.faceCount > 1) notices.push(`Found ${face.faceCount} faces, so matched the largest one.`);
-  if (face.yaw > MAX_YAW) notices.push('Your head looks turned. A straight-on photo gives a more accurate match.');
+  if (face.faceCount > 1) notices.push(`Note: ${face.faceCount} faces in the photo. I measured the largest.`);
+  if (face.yaw > MAX_YAW) notices.push('Subject’s head was turned. A straight-on photo gives a more reliable reading.');
   $('notice').hidden = notices.length === 0;
   $('notice').textContent = notices.join(' ');
 
-  // Holo card
-  const holo = $('holo');
-  holo.style.setProperty('--type', accent);
-  holo.style.setProperty('--type2', TYPE_COLORS[pokemon.types[1] ?? pokemon.types[0]] ?? accent);
-  holo.classList.remove('deal');
-  void holo.offsetWidth;
-  holo.classList.add('deal');
-  $('holo-name').textContent = pokemon.name;
-  $('holo-score').textContent = `${match.similarity}%`;
-  $<HTMLImageElement>('holo-art').src = artworkUrl(pokemon.id);
-  $<HTMLImageElement>('holo-art').alt = pokemon.name;
-  $('holo-types').replaceChildren(...pokemon.types.map(typeChip));
-  $('holo-id').textContent = `${dexNo(pokemon.id)} · ${pokemon.height} m · ${pokemon.weight} kg`;
+  // Index card
+  const card = $('specimen-card');
+  card.classList.remove('deal');
+  void card.offsetWidth;
+  card.classList.add('deal');
+  $('card-no').textContent = dexNo(pokemon.id);
+  $('card-types').replaceChildren(...pokemon.types.map(typeStamp));
+  $<HTMLImageElement>('card-art').src = artworkUrl(pokemon.id);
+  $<HTMLImageElement>('card-art').alt = pokemon.name;
+  $('card-name').textContent = pokemon.name;
+  $('card-height').textContent = `${pokemon.height} m`;
+  $('card-weight').textContent = `${pokemon.weight} kg`;
+
+  // Verdict
+  document.querySelector('.verdict-lead')!.textContent = isTop
+    ? 'Subject most closely resembles'
+    : `Candidate no. ${index + 1} for comparison`;
+  $('mon-name').textContent = `${pokemon.name}.`;
 
   const reasons = explainMatch(traits, match);
-  $('holo-traits').replaceChildren(
-    ...reasons.map((r) => {
-      const li = document.createElement('li');
-      li.textContent = titleCase(r.them);
-      return li;
-    }),
-  );
-
-  $('match-eyebrow').textContent = isTop ? 'Your Pokémon match' : `Match #${index + 1}`;
-  $('mon-name').textContent = isTop ? `You’re ${pokemon.name}!` : pokemon.name;
-
   const aligned = TRAITS.filter((t) => Math.abs(traits[t.key] - match.traits[t.key]) < 0.2).length;
   $('mon-blurb').textContent =
-    `Closely aligned on ${aligned} of 10 traits` + (reasons[0] ? `, with the strongest link in ${reasons[0].trait.label.toLowerCase()}.` : '.');
+    `Agrees closely on ${aligned} of 10 measures` +
+    (reasons[0] ? `. Strongest likeness is the ${reasons[0].trait.label.toLowerCase()}.` : '.');
 
   $('reasons').replaceChildren(
     ...(reasons.length
       ? reasons.map((r, i) => {
           const li = document.createElement('li');
           li.style.setProperty('--i', String(i));
-          li.innerHTML = `<span class="reason-tag"></span><span class="reason-text"><span class="r-you"></span><span class="arrow">→</span><span class="r-mon"></span></span>`;
-          li.querySelector('.reason-tag')!.textContent = r.trait.label;
-          li.querySelector('.r-you')!.textContent = `You: ${r.you}`;
-          li.querySelector('.r-mon')!.textContent = `${pokemon.name}: ${r.them}`;
+          li.innerHTML = `<span class="obs-tag"></span><span class="obs-text"><mark></mark>, <span class="them"></span></span>`;
+          li.querySelector('.obs-tag')!.textContent = r.trait.label;
+          li.querySelector('mark')!.textContent = titleCase(r.you);
+          li.querySelector('.them')!.textContent = `like ${pokemon.name}’s ${r.them.replace(/^an? /, '')}`;
           return li;
         })
-      : [Object.assign(document.createElement('li'), { textContent: 'A well-balanced match across every trait.' })]),
+      : [Object.assign(document.createElement('li'), { textContent: 'An even match across every measure.' })]),
   );
 
   $('legend-mon').textContent = pokemon.name;
-  renderRadar($('radar'), traits, match.traits, accent);
+  renderRadar($('radar'), traits, match.traits);
 
   const runners = $('runners');
   if (runners.childElementCount !== matches.length || index === 0) {
@@ -400,10 +372,9 @@ function renderResults(index: number) {
       ...matches.map((m, i) => {
         const btn = document.createElement('button');
         btn.className = 'runner';
-        btn.style.setProperty('--type', accentOf(m));
-        btn.innerHTML = `<span class="runner-rank">${i + 1}</span><img alt=""><span class="runner-name"></span><span class="runner-score">${m.similarity}%</span>`;
+        btn.innerHTML = `<img alt=""><span class="runner-name"></span><span class="runner-score">${m.similarity}%</span>`;
         btn.querySelector('img')!.src = artworkUrl(m.pokemon.id);
-        btn.querySelector('.runner-name')!.textContent = m.pokemon.name;
+        btn.querySelector('.runner-name')!.textContent = `${dexNo(m.pokemon.id)} ${m.pokemon.name}`;
         btn.addEventListener('click', () => selectMatch(i));
         return btn;
       }),
@@ -415,7 +386,7 @@ function renderResults(index: number) {
 function selectMatch(index: number) {
   if (!session || index === session.selected) return;
   renderResults(index);
-  animateGauge(session.matches[index].similarity);
+  countUp(session.matches[index].similarity);
   $('stage').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
   runStage(session.matches[index], 'morph');
 }
@@ -423,12 +394,11 @@ function selectMatch(index: number) {
 $('replay-btn').addEventListener('click', () => {
   if (!session) return;
   $('stage').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
-  runStage(session.matches[session.selected], 'full').then(() => animateGauge(session!.matches[session!.selected].similarity));
+  runStage(session.matches[session.selected], 'full');
 });
 
 $('again-btn').addEventListener('click', () => {
   session = null;
-  document.documentElement.style.removeProperty('--accent');
   show('pick');
 });
 
@@ -444,7 +414,8 @@ $('download-btn').addEventListener('click', async () => {
       match,
       silhouette: await loadSilhouette(match.pokemon.id),
       reasons: explainMatch(session.traits, match),
-      accent: accentOf(match),
+      observation: session.observation,
+      date: session.date,
     });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -453,28 +424,10 @@ $('download-btn').addEventListener('click', async () => {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   } catch (err) {
     console.error(err);
-    toast('Couldn’t create the card image.');
+    toast('Couldn’t save the page as an image.');
   } finally {
     btn.disabled = false;
   }
-});
-
-// Holographic tilt
-const holo = $('holo');
-holo.addEventListener('pointermove', (e) => {
-  const r = holo.getBoundingClientRect();
-  const x = (e.clientX - r.left) / r.width;
-  const y = (e.clientY - r.top) / r.height;
-  holo.style.setProperty('--mx', `${x * 100}%`);
-  holo.style.setProperty('--my', `${y * 100}%`);
-  holo.style.setProperty('--rx', `${(0.5 - y) * 18}deg`);
-  holo.style.setProperty('--ry', `${(x - 0.5) * 22}deg`);
-  holo.classList.add('active');
-});
-holo.addEventListener('pointerleave', () => {
-  holo.classList.remove('active');
-  holo.style.setProperty('--rx', '0deg');
-  holo.style.setProperty('--ry', '0deg');
 });
 
 // Start downloading the model straight away so analysis feels instant.
