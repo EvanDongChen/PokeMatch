@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PokéMatch calibration</title>
+  </head>
+  <body style="font-family: system-ui; padding: 24px">
+    <h1>Face measure calibration</h1>
+    <p>Pick a batch of front-facing portraits. Paste the output into <code>src/calibration.ts</code>.</p>
+    <input id="files" type="file" accept="image/*" multiple />
+    <pre id="out"></pre>
+    <script type="module" src="./calibrate.ts"></script>
+  </body>
+</html>
