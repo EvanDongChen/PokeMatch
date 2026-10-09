@@ -4,12 +4,17 @@
 // Run with `npm run build:shapes` (after build:pokedex).
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { PNG } from 'pngjs';
-import OVERRIDES from './head-overrides.mjs';
 
 const DEX = new URL('../src/data/pokedex.json', import.meta.url);
 const OUT = new URL('../src/data/shapes.json', import.meta.url);
 const CACHE = new URL('../.cache/artwork/', import.meta.url);
 const HEADS = new URL('../.cache/heads.json', import.meta.url);
+/**
+ * Hand-placed fixes, edited with tools/features.html. Each entry may give
+ * head: [x, y, w, h], eyes: [[x, y, w], ...] and mouth: [x, y, w] | null,
+ * as fractions of the artwork.
+ */
+const OVERRIDES_FILE = new URL('./head-overrides.json', import.meta.url);
 const FEATURES = new URL('../.cache/features.json', import.meta.url);
 const ART = (id) =>
   `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
@@ -494,6 +499,7 @@ async function mapLimit(items, limit, fn) {
 
 await mkdir(CACHE, { recursive: true });
 const dex = JSON.parse(await readFile(DEX, 'utf8'));
+const OVERRIDES = JSON.parse(await readFile(OVERRIDES_FILE, 'utf8'));
 const heads = await detectHeads(dex);
 console.log(`Measuring ${dex.length} silhouettes…`);
 const shapes = await mapLimit(dex, CONCURRENCY, async (p) => ({
@@ -506,8 +512,11 @@ console.log('Heads from:', sources);
 const features = await detectFeatures(dex, shapes);
 let withEyes = 0, withMouth = 0;
 for (const s of shapes) {
-  const { eyes, mouth } = OVERRIDES[s.id] ?? {};
-  Object.assign(s.head, pickFeatures(features[s.id].found, s.head.box), eyes && { eyes }, mouth && { mouth });
+  const fix = OVERRIDES[s.id] ?? {};
+  Object.assign(s.head, pickFeatures(features[s.id].found, s.head.box));
+  if (fix.eyes) s.head.eyes = fix.eyes;
+  // A null mouth means "this Pokémon has no visible mouth".
+  if (fix.mouth !== undefined) s.head.mouth = fix.mouth ?? undefined;
   if (s.head.eyes) withEyes++;
   if (s.head.mouth) withMouth++;
 }

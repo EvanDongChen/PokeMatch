@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PokéMatch feature editor</title>
+    <style>
+      :root {
+        --bg: #f6f3ec;
+        --panel: #fffdf8;
+        --ink: #2b2622;
+        --muted: #6f655a;
+        --line: #dcd3c2;
+        --head: #b8322a;
+        --eye: #2a5bd7;
+        --mouth: #1f8a3b;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.45 system-ui, sans-serif;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 20px;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 20px 16px;
+      }
+      @media (max-width: 860px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .nav input {
+        width: 200px;
+      }
+      #count {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .canvas-wrap {
+        position: relative;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        aspect-ratio: 1;
+        max-width: 640px;
+        touch-action: none;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        border-radius: 8px;
+      }
+      aside {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        align-self: start;
+      }
+      aside h2 {
+        font-size: 15px;
+        margin: 0 0 2px;
+      }
+      aside section {
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+        margin-top: 10px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 6px 0;
+      }
+      button,
+      select,
+      input {
+        font: inherit;
+        padding: 5px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--ink);
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--muted);
+      }
+      button.primary {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .key {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 4px;
+        vertical-align: -1px;
+      }
+      #status {
+        min-height: 1.4em;
+      }
+      #status.dirty {
+        color: var(--head);
+      }
+      #note {
+        width: 100%;
+      }
+      kbd {
+        font: 12px ui-monospace, monospace;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 0 4px;
+        background: #fff;
+      }
+      ul {
+        margin: 4px 0 0;
+        padding-left: 18px;
+      }
+      pre {
+        max-height: 140px;
+        overflow: auto;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div>
+        <h1>Feature editor</h1>
+        <p class="muted" style="margin: 0 0 12px">
+          Fix where each Pokémon's head, eyes and mouth are. Saved to <code>scripts/head-overrides.json</code>.
+        </p>
+        <div class="nav">
+          <button id="prev" title="Previous (←)">←</button>
+          <input id="find" list="names" placeholder="Name or number" spellcheck="false" />
+          <datalist id="names"></datalist>
+          <button id="next" title="Next (→)">→</button>
+          <select id="filter" aria-label="Show">
+            <option value="all">All Pokémon</option>
+            <option value="edited">Edited by hand</option>
+            <option value="no-eyes">No eyes found</option>
+            <option value="one-eye">One eye found</option>
+            <option value="no-mouth">No mouth found</option>
+          </select>
+          <span id="count"></span>
+        </div>
+        <div class="canvas-wrap"><canvas id="canvas"></canvas></div>
+      </div>
+
+      <aside>
+        <h2 id="title">…</h2>
+        <div id="status" class="muted"></div>
+        <div class="row">
+          <button id="save" class="primary" title="Ctrl+S">Save</button>
+          <button id="undo" title="Discard unsaved changes">Discard</button>
+          <button id="revert" title="Delete the hand fix and use what the detector found">Use detected</button>
+        </div>
+        <input id="note" placeholder="Note (optional), e.g. “not the bow tie”" />
+
+        <section>
+          <div class="row">
+            <button id="add-eye">+ Eye</button>
+            <button id="add-mouth">+ Mouth</button>
+            <button id="remove" disabled>Remove selected</button>
+          </div>
+          <p class="muted" style="margin: 4px 0 0">
+            <span class="key" style="background: var(--head)"></span>head
+            <span class="key" style="background: var(--eye); margin-left: 8px"></span>eye
+            <span class="key" style="background: var(--mouth); margin-left: 8px"></span>mouth
+          </p>
+          <ul class="muted">
+            <li>Drag a circle to move it; drag its rim (or scroll) to resize.</li>
+            <li>Drag the red box, or its corners, to move or resize the head.</li>
+          </ul>
+        </section>
+
+        <section>
+          <label><input type="checkbox" id="preview" checked /> Preview the face tracing <kbd>P</kbd></label>
+          <div class="row">
+            <label class="muted" style="cursor: pointer">
+              <input type="file" id="face-file" accept="image/*" hidden />
+              <span style="text-decoration: underline">Load a face photo…</span>
+            </label>
+          </div>
+          <p id="face-status" class="muted" style="margin: 0">No face loaded: the preview needs one photo.</p>
+        </section>
+
+        <section>
+          <p class="muted" style="margin: 0 0 6px">
+            Moving a head box changes how its shape is scored. Rebuild to re-measure (about a minute).
+          </p>
+          <button id="rebuild">Rebuild shapes</button>
+          <pre id="log" hidden></pre>
+        </section>
+
+        <section class="muted">
+          <kbd>←</kbd> <kbd>→</kbd> previous / next · <kbd>Del</kbd> remove · <kbd>Ctrl</kbd>+<kbd>S</kbd> save
+        </section>
+      </aside>
+    </main>
+    <script type="module" src="./features.ts"></script>
+  </body>
+</html>

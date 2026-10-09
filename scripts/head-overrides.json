@@ -1,0 +1,14 @@
+{
+  "1": {"note":"Bulbasaur: not the bulb","head":[0.04,0.28,0.62,0.58]},
+  "18": {"note":"Pidgeot: not the wing","head":[0.56,0.28,0.38,0.3]},
+  "61": {"note":"Poliwhirl: eyes on top of the round body","head":[0.3,0.06,0.6,0.45]},
+  "65": {"note":"Alakazam: not the spoons","head":[0.33,0.1,0.4,0.35]},
+  "111": {"note":"Rhyhorn","head":[0.05,0.12,0.5,0.7]},
+  "206": {"note":"Dunsparce","head":[0.02,0.42,0.4,0.55]},
+  "248": {"note":"Tyranitar: not the torso","head":[0.08,0.02,0.48,0.36]},
+  "258": {"note":"Mudkip","head":[0.06,0.3,0.62,0.5],"eyes":[[0.25,0.58,0.04],[0.41,0.58,0.04]],"mouth":[0.34,0.67,0.12]},
+  "264": {"note":"Linoone: lying flat, head on the left","head":[0.03,0.3,0.3,0.32]},
+  "384": {"note":"Rayquaza: not the coils","head":[0.04,0.26,0.34,0.32]},
+  "656": {"note":"Froakie","head":[0.2,0.02,0.55,0.5],"eyes":[[0.36,0.25,0.12],[0.66,0.27,0.12]],"mouth":[0.45,0.5,0.2]},
+  "722": {"note":"Rowlet: beak, not the bow tie","eyes":[[0.3,0.34,0.06],[0.57,0.34,0.06]],"mouth":[0.45,0.43,0.06]}
+}

@@ -34,5 +34,5 @@ On the camera screen, the same pipeline runs on every video frame (smoothed over
 
 - `npm run build:pokedex` re-fetches [src/data/pokedex.json](src/data/pokedex.json) from [PokéAPI](https://pokeapi.co), for example when new Pokémon are released.
 - `npm run build:shapes` finds each Pokémon's head and re-measures the artwork into [src/data/shapes.json](src/data/shapes.json). Run it after `build:pokedex`. The artwork and head detections are cached in `.cache/`. The first run downloads the detector (about 150 MB) and takes around 15 minutes; later runs take about a minute.
-- If a head, eyes or mouth are still wrong, add a fix to [scripts/head-overrides.mjs](scripts/head-overrides.mjs) and re-run `build:shapes`.
+- If a head, eyes or mouth are wrong, fix them in the feature editor at `/tools/features.html` (with `npm run dev`). Drag and resize the head box, eyes and mouth, and load a face photo to preview the tracing. Fixes are saved to [scripts/head-overrides.json](scripts/head-overrides.json) and applied straight away; after moving a head box, press **Rebuild shapes** to re-measure it.
 - `/tools/calibrate.html` (with `npm run dev`) recomputes face calibration stats from a batch of portraits.

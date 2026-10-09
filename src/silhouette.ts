@@ -55,7 +55,11 @@ function rng(seed: number) {
   };
 }
 
-async function build(id: number): Promise<Silhouette> {
+/** The parts of shapes.json a silhouette is built from. */
+export type HeadData = NonNullable<ReturnType<typeof SHAPES.get>>['head'];
+
+/** Builds a silhouette, by default with the head from shapes.json. Not cached. */
+export async function buildSilhouette(id: number, head: HeadData | undefined = SHAPES.get(id)?.head): Promise<Silhouette> {
   const image = await loadImage(artworkUrl(id));
 
   const maskCanvas = document.createElement('canvas');
@@ -64,7 +68,6 @@ async function build(id: number): Promise<Silhouette> {
   mctx.drawImage(image, 0, 0, MASK_SIZE, MASK_SIZE);
   const { data } = mctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE);
   // Only the head's bounding box counts (with a pixel of slack).
-  const head = SHAPES.get(id)?.head;
   const [hx, hy, hw, hh] = (head?.box ?? [0, 0, 1, 1]).map((v) => v * MASK_SIZE);
   const feature = ([x, y, w]: number[]): Feature => ({ x, y, w });
   const solid = (x: number, y: number) =>
@@ -145,7 +148,7 @@ async function build(id: number): Promise<Silhouette> {
 export function loadSilhouette(id: number): Promise<Silhouette> {
   let p = cache.get(id);
   if (!p) {
-    p = build(id);
+    p = buildSilhouette(id);
     p.catch(() => cache.delete(id));
     cache.set(id, p);
   }

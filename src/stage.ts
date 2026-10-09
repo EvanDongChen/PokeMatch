@@ -438,6 +438,12 @@ export class Stage {
 
   // --------------------------------------------------------------- mapping
 
+  /** Where each face landmark lands on a Pokémon (for tools/features.html). */
+  previewMapping(sil: Silhouette): { dst: Point; color: string }[] {
+    this.buildMapping(sil, []);
+    return this.particles.map(({ dst, color }) => ({ dst, color }));
+  }
+
   private buildMapping(sil: Silhouette, linkTraits: { key: TraitKey; label: string }[]) {
     const pts = this.points;
     const ovalSet = new Set(OVAL);
