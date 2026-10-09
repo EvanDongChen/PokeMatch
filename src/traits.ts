@@ -37,7 +37,7 @@ export const TRAITS: Trait[] = [
     recipe: [['widthHeight', 1]],
     spread: 0.977,
     face: ['a long, oval face', 'a wide, round face'],
-    mon: ['a lean, slender build', 'a round, chunky build'],
+    mon: ['a long, narrow head', 'a big, round head'],
   },
   {
     key: 'jaw',
@@ -46,7 +46,7 @@ export const TRAITS: Trait[] = [
     recipe: [['jawRatio', 1], ['chinAngle', 0.4]],
     spread: 1.083,
     face: ['a soft, tapered jaw', 'a strong, square jaw'],
-    mon: ['a delicate frame', 'a sturdy, blocky frame'],
+    mon: ['a delicate jawline', 'a blocky, square jaw'],
   },
   {
     key: 'sharp',
@@ -55,7 +55,7 @@ export const TRAITS: Trait[] = [
     recipe: [['chinLength', 1], ['chinAngle', -0.6]],
     spread: 0.787,
     face: ['a short, rounded chin', 'a long, pointed chin'],
-    mon: ['a soft, rounded outline', 'a sharp, pointed outline'],
+    mon: ['a soft, rounded head', 'a sharp, pointed head'],
   },
   {
     key: 'eyes',
@@ -82,7 +82,7 @@ export const TRAITS: Trait[] = [
     recipe: [['noseLength', 1]],
     spread: 0.997,
     face: ['a short, button nose', 'a long, elegant nose'],
-    mon: ['a compact body', 'a tall, long silhouette'],
+    mon: ['a flat, compact face', 'a long snout'],
   },
   {
     key: 'mouth',

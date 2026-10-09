@@ -39,7 +39,7 @@ const logBmi = (p: Pokemon) => Math.log(p.weight / Math.max(p.height, 0.1) ** 2)
  */
 const RAW: Record<TraitKey, (p: Pokemon) => number> = {
   round: (p) =>
-    logBmi(p) +
+    0.3 * logBmi(p) +
     shapeBonus(p, {
       ball: 1.5, blob: 1.2, heads: 0.6, armor: 0.3, arms: 0.2, quadruped: 0.1,
       fish: -0.3, tentacles: -0.3, legs: -0.6, wings: -0.6, 'bug-wings': -0.8, squiggle: -1.2,
@@ -75,7 +75,7 @@ const RAW: Record<TraitKey, (p: Pokemon) => number> = {
     }),
 
   nose: (p) =>
-    0.8 * Math.log(p.height) +
+    0.3 * Math.log(p.height) +
     typeBonus(p, { dragon: 0.3 }) +
     shapeBonus(p, { squiggle: 0.6, upright: 0.3, humanoid: 0.3, legs: 0.3, blob: -0.4, ball: -0.6 }),
 
@@ -126,8 +126,8 @@ function percentiles(values: number[]): number[] {
   return out;
 }
 
-/** Silhouette measurements of each artwork (scripts/build-shapes.mjs). */
-interface Shape {
+/** Outline measurements of a region of the artwork (scripts/build-shapes.mjs). */
+interface Outline {
   aspect: number;
   fill: number;
   circularity: number;
@@ -137,25 +137,39 @@ interface Shape {
   base: number;
   top: number;
 }
-const SHAPES = new Map((shapes as ({ id: number } & Shape)[]).map((s) => [s.id, s]));
+
+/** The whole silhouette, plus its head, where the subject's face is compared. */
+export interface Shape extends Outline {
+  /**
+   * box is [x, y, w, h]; eyes (left to right) and mouth are [x, y, width] at
+   * their centres, when found. All are fractions of the artwork.
+   */
+  head: Outline & { box: number[]; eyes?: number[][]; mouth?: number[] };
+  /** How much of the silhouette's height is head. */
+  headShare: number;
+}
+export const SHAPES = new Map((shapes as ({ id: number } & Shape)[]).map((s) => [s.id, s]));
 
 /**
- * How each trait shows up in the artwork's outline, and how much that counts
+ * How each trait shows up in the head's outline, and how much that counts
  * against the stats/type-based score above (0 = ignore the outline).
  */
 const GEO: Partial<Record<TraitKey, { weight: number; score: (s: Shape) => number }>> = {
-  // Ball-like, filled-in silhouettes.
-  round: { weight: 0.55, score: (s) => s.circularity + 0.5 * s.fill - 0.3 * Math.abs(Math.log(s.aspect)) },
-  // Chunky, solid shapes that stay wide at the bottom.
-  jaw: { weight: 0.45, score: (s) => s.base + 0.6 * s.solidity },
-  // Spikes, horns and a narrow, pointed bottom.
-  sharp: { weight: 0.5, score: (s) => 3 * s.jagged + (1 - s.solidity) + 0.4 * (1 - s.base) },
-  // Tall or stretched-out outlines.
-  nose: { weight: 0.5, score: (s) => Math.log(s.aspect) + 0.5 * s.radialCV },
-  // Wide at the top, like a big head.
-  forehead: { weight: 0.3, score: (s) => s.top },
-  // Compact, rounded shapes read as cute.
-  eyes: { weight: 0.2, score: (s) => s.circularity - s.radialCV },
+  // A ball-like, filled-in head.
+  round: {
+    weight: 0.7,
+    score: ({ head: h }) => h.circularity + 0.5 * h.fill - 0.3 * Math.abs(Math.log(h.aspect)),
+  },
+  // A head that stays wide and solid at the bottom.
+  jaw: { weight: 0.6, score: ({ head: h }) => h.base + 0.6 * h.solidity },
+  // Spikes, horns and a narrow, pointed chin.
+  sharp: { weight: 0.6, score: ({ head: h }) => 3 * h.jagged + (1 - h.solidity) + 0.4 * (1 - h.base) },
+  // A head stretched out into a snout or beak.
+  nose: { weight: 0.6, score: ({ head: h }) => h.radialCV + 0.3 * Math.abs(Math.log(h.aspect)) },
+  // Wide at the top of the head.
+  forehead: { weight: 0.4, score: ({ head: h }) => h.top },
+  // A compact, rounded head that is big for the body reads as cute.
+  eyes: { weight: 0.3, score: (s) => s.head.circularity - s.head.radialCV + 0.5 * s.headShare },
 };
 
 /** Trait percentiles for every Pokémon, in Pokédex order. */

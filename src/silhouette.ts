@@ -1,4 +1,4 @@
-import { artworkUrl } from './pokemon.ts';
+import { artworkUrl, SHAPES } from './pokemon.ts';
 
 /** Points are normalised to the artwork square: 0..1 on both axes. */
 export interface Point {
@@ -10,13 +10,24 @@ export interface Silhouette {
   image: HTMLImageElement;
   /** Solid black version of the artwork ("Who's that Pokémon?"). */
   shadow: HTMLCanvasElement;
+  /** The rest describes the head, where the subject's face is mapped. */
   centroid: Point;
   /** Outline points, one per ray, ordered by angle around the centroid. */
   outline: Point[];
-  /** Random points inside the body. */
+  /** Random points inside the head. */
   interior: Point[];
-  /** Bounding box of the opaque pixels. */
+  /** Bounding box of the head. */
   box: { x: number; y: number; w: number; h: number };
+  /** The eyes (left to right) and mouth found in the artwork, if any. */
+  eyes: Feature[];
+  mouth: Feature | null;
+}
+
+/** A facial feature's centre and width, as fractions of the artwork. */
+export interface Feature {
+  x: number;
+  y: number;
+  w: number;
 }
 
 const MASK_SIZE = 192;
@@ -52,8 +63,17 @@ async function build(id: number): Promise<Silhouette> {
   const mctx = maskCanvas.getContext('2d', { willReadFrequently: true })!;
   mctx.drawImage(image, 0, 0, MASK_SIZE, MASK_SIZE);
   const { data } = mctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE);
+  // Only the head's bounding box counts (with a pixel of slack).
+  const head = SHAPES.get(id)?.head;
+  const [hx, hy, hw, hh] = (head?.box ?? [0, 0, 1, 1]).map((v) => v * MASK_SIZE);
+  const feature = ([x, y, w]: number[]): Feature => ({ x, y, w });
   const solid = (x: number, y: number) =>
-    x >= 0 && y >= 0 && x < MASK_SIZE && y < MASK_SIZE && data[(y * MASK_SIZE + x) * 4 + 3] > 60;
+    x >= Math.floor(hx) - 1 &&
+    y >= Math.floor(hy) - 1 &&
+    x <= Math.ceil(hx + hw) &&
+    y <= Math.ceil(hy + hh) &&
+    x >= 0 && y >= 0 && x < MASK_SIZE && y < MASK_SIZE &&
+    data[(y * MASK_SIZE + x) * 4 + 3] > 60;
 
   const filled: number[] = [];
   let sx = 0, sy = 0, minX = MASK_SIZE, minY = MASK_SIZE, maxX = 0, maxY = 0;
@@ -111,6 +131,8 @@ async function build(id: number): Promise<Silhouette> {
     centroid: { x: cx / MASK_SIZE, y: cy / MASK_SIZE },
     outline,
     interior,
+    eyes: head?.eyes?.map(feature) ?? [],
+    mouth: head?.mouth ? feature(head.mouth) : null,
     box: {
       x: minX / MASK_SIZE,
       y: minY / MASK_SIZE,
