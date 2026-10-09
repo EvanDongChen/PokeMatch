@@ -178,6 +178,8 @@ export interface Match {
   traits: TraitVector;
   /** 0–100 */
   similarity: number;
+  /** 1 = best match for this face, up to 1025. */
+  rank: number;
 }
 
 const WEIGHT_SUM = TRAITS.reduce((s, t) => s + t.weight, 0);
@@ -194,8 +196,8 @@ const EXPECTED_SQ = POKEMON_TRAITS.map(
 );
 const MEAN_EXPECTED_SQ = EXPECTED_SQ.reduce((a, b) => a + b, 0) / EXPECTED_SQ.length;
 
-/** Pokémon ranked by how closely their traits match the face's traits. */
-export function rankMatches(face: TraitVector, count = 6, hub = HUB_CORRECTION): Match[] {
+/** Every Pokémon, ranked by how closely its traits match the face's traits. */
+export function rankAll(face: TraitVector, hub = HUB_CORRECTION): Match[] {
   return POKEDEX.map((pokemon, i) => {
     const traits = POKEMON_TRAITS[i];
     let sq = 0;
@@ -204,12 +206,17 @@ export function rankMatches(face: TraitVector, count = 6, hub = HUB_CORRECTION):
     return { pokemon, traits, score };
   })
     .sort((a, b) => a.score - b.score)
-    .slice(0, count)
-    .map(({ pokemon, traits, score }) => ({
+    .map(({ pokemon, traits, score }, i) => ({
       pokemon,
       traits,
       similarity: Math.min(99, Math.round(100 * (1 - Math.sqrt(Math.max(0, score))))),
+      rank: i + 1,
     }));
+}
+
+/** The closest `count` Pokémon. */
+export function rankMatches(face: TraitVector, count = 6, hub = HUB_CORRECTION): Match[] {
+  return rankAll(face, hub).slice(0, count);
 }
 
 export interface Reason {

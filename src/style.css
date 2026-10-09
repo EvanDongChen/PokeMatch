@@ -1147,6 +1147,51 @@ button {
   pointer-events: none;
 }
 
+/* compare */
+
+.compare {
+  margin-top: 40px;
+}
+
+.compare-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+}
+
+.compare-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 1.5px dotted var(--pencil);
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1.3;
+  outline: none;
+}
+
+.compare-row input:focus {
+  border-bottom: 1.5px solid var(--blue);
+  background: var(--highlight);
+}
+
+.compare-row input::placeholder {
+  color: var(--faint);
+}
+
+.compare-row .tape {
+  min-height: 42px;
+  padding: 4px 22px 2px;
+  font-size: 1.05rem;
+}
+
+.compare-msg {
+  min-height: 1.6em;
+  margin-top: 8px;
+  font-size: 1.05rem;
+}
+
 /* ---------------------------------------------------------- toast, footer */
 
 .toast {

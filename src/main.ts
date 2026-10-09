@@ -1,6 +1,6 @@
 import { analyzeFace, loadLandmarker, MAX_YAW, type FaceAnalysis } from './face.ts';
 import { TRAITS, faceTraits, type TraitVector } from './traits.ts';
-import { POKEDEX, rankMatches, explainMatch, artworkUrl, type Match } from './pokemon.ts';
+import { POKEDEX, rankAll, explainMatch, artworkUrl, type Match } from './pokemon.ts';
 import { loadSilhouette } from './silhouette.ts';
 import { Stage, type Phase } from './stage.ts';
 import { renderRadar } from './radar.ts';
@@ -160,8 +160,10 @@ interface Session {
   photo: HTMLCanvasElement;
   face: FaceAnalysis;
   traits: TraitVector;
-  matches: Match[];
-  selected: number;
+  /** Every Pokémon, best match first. */
+  all: Match[];
+  /** The match on show. */
+  current: Match;
   observation: string;
   date: string;
 }
@@ -240,13 +242,13 @@ async function start(photo: HTMLCanvasElement) {
   }
 
   const traits = faceTraits(face.measures);
-  const matches = rankMatches(traits);
-  session = { photo, face, traits, matches, selected: 0, observation, date };
+  const all = rankAll(traits);
+  session = { photo, face, traits, all, current: all[0], observation, date };
   buildReadout(traits);
   $('readout-status').textContent = '';
 
   stage.setFace(photo, face);
-  await runStage(matches[0], 'full');
+  await runStage(all[0], 'full');
 }
 
 async function runStage(match: Match, mode: 'full' | 'morph') {
@@ -257,12 +259,12 @@ async function runStage(match: Match, mode: 'full' | 'morph') {
   const flicker = new Set<number>();
   if (mode === 'full') {
     while (flicker.size < 10) flicker.add(1 + Math.floor(Math.random() * POKEDEX.length));
-    session.matches.forEach((m) => flicker.add(m.pokemon.id));
+    session.all.slice(0, 6).forEach((m) => flicker.add(m.pokemon.id));
     flicker.delete(match.pokemon.id);
   }
 
   $('skip-btn').hidden = false;
-  if (mode === 'full') renderResults(session.selected);
+  if (mode === 'full') renderResults(session.current);
   const scrollAtStart = window.scrollY;
 
   await stage.play({
@@ -290,7 +292,7 @@ function revealResults() {
   if (!$('results').hidden) return;
   $('readout').hidden = true;
   $('results').hidden = false;
-  countUp(session!.matches[session!.selected].similarity);
+  countUp(session!.current.similarity);
 }
 
 $('skip-btn').addEventListener('click', () => stage.skip());
@@ -319,13 +321,18 @@ function countUp(value: number) {
   countFrame = requestAnimationFrame(step);
 }
 
-function renderResults(index: number) {
+const ordinal = (n: number) => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
+function renderResults(match: Match) {
   if (!session) return;
-  session.selected = index;
-  const { traits, matches, face } = session;
-  const match = matches[index];
+  session.current = match;
+  const { traits, face } = session;
   const { pokemon } = match;
-  const isTop = index === 0;
+  const isTop = match.rank === 1;
 
   const notices: string[] = [];
   if (face.faceCount > 1) notices.push(`Note: ${face.faceCount} faces in the photo. I measured the largest.`);
@@ -352,14 +359,20 @@ function renderResults(index: number) {
   // Verdict
   document.querySelector('.verdict-lead')!.textContent = isTop
     ? 'Subject most closely resembles'
-    : `Candidate no. ${index + 1} for comparison`;
+    : match.rank <= 6
+      ? `Runner-up, ${ordinal(match.rank)} closest of 1025`
+      : `Compared on request: ${ordinal(match.rank)} closest of 1025`;
   $('mon-name').textContent = `${pokemon.name}.`;
 
   const reasons = explainMatch(traits, match);
   const aligned = TRAITS.filter((t) => Math.abs(traits[t.key] - match.traits[t.key]) < 0.2).length;
+  const furthest = [...TRAITS].sort(
+    (a, b) => Math.abs(traits[b.key] - match.traits[b.key]) - Math.abs(traits[a.key] - match.traits[a.key]),
+  )[0];
   $('mon-blurb').textContent =
     `Agrees closely on ${aligned} of 10 measures` +
-    (reasons[0] ? `. Strongest likeness is the ${reasons[0].trait.label.toLowerCase()}.` : '.');
+    (reasons[0] ? `. Strongest likeness is the ${reasons[0].trait.label.toLowerCase()}` : '') +
+    (match.rank > 6 ? `; furthest apart on ${furthest.label.toLowerCase()}.` : '.');
 
   $('reasons').replaceChildren(
     ...(reasons.length
@@ -379,34 +392,71 @@ function renderResults(index: number) {
   renderRadar($('radar'), traits, match.traits);
 
   const runners = $('runners');
-  if (runners.childElementCount !== matches.length || index === 0) {
+  if (runners.dataset.observation !== session.observation) {
+    runners.dataset.observation = session.observation;
     runners.replaceChildren(
-      ...matches.map((m, i) => {
+      ...session.all.slice(0, 6).map((m) => {
         const btn = document.createElement('button');
         btn.className = 'runner';
+        btn.dataset.id = String(m.pokemon.id);
         btn.innerHTML = `<img alt=""><span class="runner-name"></span><span class="runner-score">${m.similarity}%</span>`;
         btn.querySelector('img')!.src = artworkUrl(m.pokemon.id);
         btn.querySelector('.runner-name')!.textContent = `${dexNo(m.pokemon.id)} ${m.pokemon.name}`;
-        btn.addEventListener('click', () => selectMatch(i));
+        btn.addEventListener('click', () => selectMatch(m));
         return btn;
       }),
     );
   }
-  runners.querySelectorAll('.runner').forEach((b, i) => b.classList.toggle('selected', i === index));
+  runners
+    .querySelectorAll<HTMLElement>('.runner')
+    .forEach((b) => b.classList.toggle('selected', b.dataset.id === String(pokemon.id)));
 }
 
-function selectMatch(index: number) {
-  if (!session || index === session.selected) return;
-  renderResults(index);
-  countUp(session.matches[index].similarity);
+function selectMatch(match: Match) {
+  if (!session || match === session.current) return;
+  renderResults(match);
+  countUp(match.similarity);
   $('stage').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
-  runStage(session.matches[index], 'morph');
+  runStage(match, 'morph');
 }
+
+// "Compare with…": look up any Pokémon by name.
+const normalise = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+$('pokemon-names').replaceChildren(
+  ...POKEDEX.map((p) => Object.assign(document.createElement('option'), { value: p.name })),
+);
+
+$('compare-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!session) return;
+  const input = $<HTMLInputElement>('compare-input');
+  const query = normalise(input.value);
+  const msg = $('compare-msg');
+  if (!query) return;
+  const exact = session.all.find((m) => normalise(m.pokemon.name) === query);
+  const prefixed = session.all.filter((m) => normalise(m.pokemon.name).startsWith(query));
+  const match = exact ?? (prefixed.length === 1 ? prefixed[0] : undefined);
+  if (!match) {
+    msg.textContent = prefixed.length
+      ? `Several on file: ${prefixed.slice(0, 4).map((m) => m.pokemon.name).join(', ')}…`
+      : 'No species by that name on file.';
+    return;
+  }
+  msg.textContent = `${match.pokemon.name} is the ${ordinal(match.rank)} closest of 1025 to this subject.`;
+  input.value = '';
+  selectMatch(match);
+});
 
 $('replay-btn').addEventListener('click', () => {
   if (!session) return;
   $('stage').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
-  runStage(session.matches[session.selected], 'full');
+  runStage(session.current, 'full');
 });
 
 $('again-btn').addEventListener('click', () => {
@@ -438,7 +488,7 @@ $('download-btn').addEventListener('click', async () => {
   const btn = $<HTMLButtonElement>('download-btn');
   btn.disabled = true;
   try {
-    const match = session.matches[session.selected];
+    const match = session.current;
     const blob = await renderShareCard({
       photo: session.photo,
       crop: stage.faceCrop,

@@ -142,7 +142,12 @@ export async function renderShareCard(opts: {
   // Verdict
   ctx.fillStyle = BLUE;
   ctx.font = `400 40px ${HAND}`;
-  ctx.fillText('Subject most closely resembles', 120, 720);
+  const nth = (n: number) => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+  ctx.fillText(
+    match.rank === 1 ? 'Subject most closely resembles' : `Compared with (${nth(match.rank)} closest of 1025)`,
+    120,
+    720,
+  );
   ctx.fillStyle = INK;
   let size = 150;
   ctx.font = `400 ${size}px ${DISPLAY}`;
