@@ -1,0 +1,29 @@
+{
+  "name": "pokematch",
+  "version": "1.0.0",
+  "description": "Find out which Pokémon matches your facial structure.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "build:pokedex": "node scripts/build-pokedex.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EvanDongChen/PokeMatch.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/EvanDongChen/PokeMatch/issues"
+  },
+  "homepage": "https://github.com/EvanDongChen/PokeMatch#readme",
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.1.0"
+  }
+}
