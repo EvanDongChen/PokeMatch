@@ -46,7 +46,7 @@ export const TRAITS: Trait[] = [
     recipe: [['jawRatio', 1], ['chinAngle', 0.4]],
     spread: 1.083,
     face: ['a soft, tapered jaw', 'a strong, square jaw'],
-    mon: ['a delicate frame', 'a sturdy, tanky frame'],
+    mon: ['a delicate frame', 'a sturdy, blocky frame'],
   },
   {
     key: 'sharp',
@@ -55,7 +55,7 @@ export const TRAITS: Trait[] = [
     recipe: [['chinLength', 1], ['chinAngle', -0.6]],
     spread: 0.787,
     face: ['a short, rounded chin', 'a long, pointed chin'],
-    mon: ['a laid-back pace', 'a sleek, quick look'],
+    mon: ['a soft, rounded outline', 'a sharp, pointed outline'],
   },
   {
     key: 'eyes',

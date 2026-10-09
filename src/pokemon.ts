@@ -1,4 +1,5 @@
 import dex from './data/pokedex.json' with { type: 'json' };
+import shapes from './data/shapes.json' with { type: 'json' };
 import { TRAITS, type TraitKey, type TraitVector } from './traits.ts';
 
 export interface Pokemon {
@@ -125,11 +126,49 @@ function percentiles(values: number[]): number[] {
   return out;
 }
 
+/** Silhouette measurements of each artwork (scripts/build-shapes.mjs). */
+interface Shape {
+  aspect: number;
+  fill: number;
+  circularity: number;
+  solidity: number;
+  radialCV: number;
+  jagged: number;
+  base: number;
+  top: number;
+}
+const SHAPES = new Map((shapes as ({ id: number } & Shape)[]).map((s) => [s.id, s]));
+
+/**
+ * How each trait shows up in the artwork's outline, and how much that counts
+ * against the stats/type-based score above (0 = ignore the outline).
+ */
+const GEO: Partial<Record<TraitKey, { weight: number; score: (s: Shape) => number }>> = {
+  // Ball-like, filled-in silhouettes.
+  round: { weight: 0.55, score: (s) => s.circularity + 0.5 * s.fill - 0.3 * Math.abs(Math.log(s.aspect)) },
+  // Chunky, solid shapes that stay wide at the bottom.
+  jaw: { weight: 0.45, score: (s) => s.base + 0.6 * s.solidity },
+  // Spikes, horns and a narrow, pointed bottom.
+  sharp: { weight: 0.5, score: (s) => 3 * s.jagged + (1 - s.solidity) + 0.4 * (1 - s.base) },
+  // Tall or stretched-out outlines.
+  nose: { weight: 0.5, score: (s) => Math.log(s.aspect) + 0.5 * s.radialCV },
+  // Wide at the top, like a big head.
+  forehead: { weight: 0.3, score: (s) => s.top },
+  // Compact, rounded shapes read as cute.
+  eyes: { weight: 0.2, score: (s) => s.circularity - s.radialCV },
+};
+
 /** Trait percentiles for every Pokémon, in Pokédex order. */
 export const POKEMON_TRAITS: TraitVector[] = (() => {
   const vectors = POKEDEX.map(() => ({}) as TraitVector);
   for (const { key } of TRAITS) {
-    percentiles(POKEDEX.map(RAW[key])).forEach((v, i) => (vectors[i][key] = v));
+    let values = percentiles(POKEDEX.map(RAW[key]));
+    const geo = GEO[key];
+    if (geo) {
+      const outline = percentiles(POKEDEX.map((p) => geo.score(SHAPES.get(p.id)!)));
+      values = percentiles(values.map((v, i) => (1 - geo.weight) * v + geo.weight * outline[i]));
+    }
+    values.forEach((v, i) => (vectors[i][key] = v));
   }
   return vectors;
 })();
